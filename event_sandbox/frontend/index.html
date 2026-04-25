@@ -4,241 +4,176 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EventSandbox - 智能事件推演沙盘</title>
-    <link rel="stylesheet" href="https://unpkg.com/antd@5.12.0/dist/reset.css">
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>
-    <script src="https://unpkg.com/antd@5.12.0/dist/antd.min.js"></script>
     <script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
     <script src="config.js"></script>
     <style>
         :root {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.5;
-            color-scheme: light dark;
-            color: rgba(0, 0, 0, 0.87);
-            background-color: #f5f5f5;
+            --primary: #667eea;
+            --primary-dark: #5a6fd6;
+            --success: #38ef7d;
+            --warning: #f45c43;
+            --bg: #f5f7fa;
+            --white: #ffffff;
+            --text: #333333;
+            --text-light: #666666;
+            --border: #e8e8e8;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { margin: 0; min-height: 100vh; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
         #root { min-height: 100vh; }
-        #app-container { display: none; }
-        #app-container.ready { display: flex; }
-        .app-container { display: flex; flex-direction: column; min-height: 100vh; }
-        .app-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; padding: 16px 24px;
-            display: flex; align-items: center; justify-content: space-between;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        }
-        .app-header h1 { font-size: 24px; font-weight: 600; margin: 0; }
-        .app-header .subtitle { font-size: 14px; opacity: 0.9; margin-left: 12px; }
-        .app-main { flex: 1; display: flex; padding: 16px; gap: 16px; overflow: hidden; }
-        .panel {
-            background: white; border-radius: 8px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-            overflow: hidden; display: flex; flex-direction: column;
-        }
-        .panel-header {
-            padding: 12px 16px; border-bottom: 1px solid #f0f0f0;
-            font-weight: 600; font-size: 14px; color: #333;
-            display: flex; align-items: center; justify-content: space-between;
-        }
-        .panel-content { flex: 1; padding: 16px; overflow: auto; }
-        .left-sidebar { width: 320px; flex-shrink: 0; }
-        .center-area { flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-        .right-sidebar { width: 360px; flex-shrink: 0; }
-        .visualization-area { flex: 1; min-height: 400px; }
-        .events-panel { height: 280px; }
-        .metrics-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
-        .metric-card {
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
-            border-radius: 8px; padding: 16px; text-align: center;
-        }
-        .metric-card.positive { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
-        .metric-card.negative { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); color: white; }
-        .metric-value { font-size: 28px; font-weight: 700; }
-        .metric-label { font-size: 12px; opacity: 0.8; margin-top: 4px; }
-        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
-        .btn {
-            padding: 8px 16px; border: none; border-radius: 6px;
-            cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s;
-        }
-        .btn-primary { background: #667eea; color: white; }
-        .btn-primary:hover { background: #5a6fd6; }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-success { background: #38ef7d; color: #333; }
-        .btn-warning { background: #f45c43; color: white; }
-        .input-group { margin-bottom: 12px; }
-        .input-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
-        .input-group input, .input-group textarea, .input-group select {
-            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
-            border-radius: 6px; font-size: 14px;
-        }
-        .input-group textarea { min-height: 100px; resize: vertical; }
-        .event-item {
-            padding: 10px 12px; border-left: 3px solid #667eea;
-            background: #f9f9f9; margin-bottom: 8px; border-radius: 0 4px 4px 0;
-        }
-        .event-round { font-size: 11px; color: #999; margin-bottom: 4px; }
-        .event-description { font-size: 13px; color: #333; line-height: 1.4; }
-        .event-agents { font-size: 11px; color: #666; margin-top: 4px; }
-        .network-container { width: 100%; height: 100%; min-height: 400px; }
-        .network-container svg { width: 100%; height: 100%; }
-        .empty-state {
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center; height: 200px; color: #999; text-align: center;
-        }
-        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
-        .agent-list { display: flex; flex-direction: column; gap: 8px; }
-        .agent-card {
-            padding: 12px; border: 1px solid #e8e8e8;
-            border-radius: 6px; transition: all 0.2s; cursor: pointer;
-        }
-        .agent-card:hover { border-color: #667eea; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15); }
-        .agent-card.selected { border-color: #667eea; background: #f9f9ff; }
-        .agent-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+        /* App Container */
+        .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+        /* Header */
+        .header { background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%); color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header-info { display: flex; gap: 16px; align-items: center; font-size: 13px; }
+        .badge { padding: 4px 12px; background: rgba(255,255,255,0.2); border-radius: 12px; }
+
+        /* Main Layout */
+        .main { flex: 1; display: flex; padding: 16px; gap: 16px; overflow: hidden; }
+        .sidebar { width: 280px; display: flex; flex-direction: column; gap: 16px; }
+        .center { flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+        /* Panels */
+        .panel { background: var(--white); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden; }
+        .panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .panel-body { padding: 16px; flex: 1; overflow: auto; }
+
+        /* Form Elements */
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 12px; color: var(--text-light); margin-bottom: 4px; }
+        .form-control { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; transition: border-color 0.2s; }
+        .form-control:focus { outline: none; border-color: var(--primary); }
+        textarea.form-control { resize: vertical; min-height: 80px; }
+
+        /* Buttons */
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+        .btn-success { background: var(--success); color: #333; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-block { width: 100%; }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* Agent Cards */
+        .agent-card { padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
+        .agent-card:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(102,126,234,0.15); }
+        .agent-card.selected { border-color: var(--primary); background: #f9f9ff; }
+        .agent-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .agent-name { font-weight: 600; font-size: 14px; }
-        .agent-type { font-size: 11px; padding: 2px 6px; background: #f0f0f0; border-radius: 4px; color: #666; }
-        .agent-status { width: 8px; height: 8px; border-radius: 50%; }
-        .agent-status.active { background: #38ef7d; }
-        .agent-status.inactive { background: #999; }
-        .agent-status.intervened { background: #f45c43; }
-        .agent-sentiment { font-size: 12px; color: #666; }
-        .intervention-form {
-            padding: 12px; background: #f9f9f9;
-            border-radius: 6px; margin-top: 12px;
-        }
-        .intervention-type { display: flex; gap: 8px; margin-bottom: 12px; }
-        .intervention-type button {
-            flex: 1; padding: 8px; border: 1px solid #ddd;
-            background: white; border-radius: 6px; cursor: pointer; font-size: 12px;
-        }
-        .intervention-type button.active { border-color: #667eea; background: #667eea; color: white; }
-        .loading-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255, 255, 255, 0.9);
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center; z-index: 1000;
-        }
-        .loading-spinner {
-            width: 48px; height: 48px;
-            border: 4px solid #f0f0f0; border-top-color: #667eea;
-            border-radius: 50%; animation: spin 1s linear infinite;
-        }
+        .agent-type { font-size: 10px; padding: 2px 6px; background: var(--bg); border-radius: 4px; color: var(--text-light); }
+        .agent-meta { font-size: 12px; color: var(--text-light); }
+        .sentiment-bar { height: 4px; background: var(--bg); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+        .sentiment-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+        /* Network Graph */
+        .network-container { width: 100%; height: 350px; position: relative; background: #fafafa; border-radius: 8px; }
+        .network-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 10; }
+        .network-controls button { width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--border); background: white; cursor: pointer; font-size: 14px; }
+        .network-controls button:hover { background: var(--bg); }
+        .network-svg { width: 100%; height: 100%; cursor: grab; }
+        .network-svg:active { cursor: grabbing; }
+        .node circle { stroke: white; stroke-width: 2px; transition: transform 0.2s; }
+        .node:hover circle { transform: scale(1.1); }
+        .node text { font-size: 10px; fill: var(--text); pointer-events: none; }
+        .link { stroke-opacity: 0.6; }
+        .legend { position: absolute; bottom: 8px; left: 8px; background: white; padding: 8px; border-radius: 6px; font-size: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* Metrics */
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .metric-card { padding: 16px; border-radius: 8px; text-align: center; }
+        .metric-card.neutral { background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%); }
+        .metric-card.positive { background: linear-gradient(135deg, #11998e 0%, var(--success) 100%); color: white; }
+        .metric-card.negative { background: linear-gradient(135deg, #eb3349 0%, var(--warning) 100%); color: white; }
+        .metric-value { font-size: 24px; font-weight: 700; }
+        .metric-label { font-size: 11px; opacity: 0.8; margin-top: 4px; }
+
+        /* Events Timeline */
+        .timeline { max-height: 200px; overflow-y: auto; }
+        .event-item { padding: 10px 12px; border-left: 3px solid var(--primary); background: var(--bg); margin-bottom: 8px; border-radius: 0 6px 6px 0; }
+        .event-item.action { border-left-color: var(--primary); }
+        .event-item.external { border-left-color: var(--warning); }
+        .event-item.intervention { border-left-color: #f7b731; }
+        .event-meta { font-size: 11px; color: var(--text-light); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+        .event-type { padding: 1px 6px; border-radius: 4px; font-size: 10px; color: white; }
+        .event-type.action { background: var(--primary); }
+        .event-type.external { background: var(--warning); }
+        .event-type.intervention { background: #f7b731; }
+        .event-desc { font-size: 13px; color: var(--text); }
+
+        /* Intervention Panel */
+        .intervention-section { background: var(--bg); padding: 12px; border-radius: 8px; margin-top: 12px; }
+        .intervention-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+        .intervention-tab { flex: 1; padding: 8px; border: 1px solid var(--border); background: white; border-radius: 6px; cursor: pointer; font-size: 12px; text-align: center; transition: all 0.2s; }
+        .intervention-tab.active { border-color: var(--primary); background: var(--primary); color: white; }
+        .quick-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+        .quick-actions .btn { font-size: 11px; padding: 4px 8px; }
+
+        /* Agent Detail Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: white; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow: hidden; }
+        .modal-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 16px; font-weight: 600; }
+        .modal-close { width: 32px; height: 32px; border-radius: 6px; border: none; background: transparent; cursor: pointer; font-size: 18px; }
+        .modal-body { padding: 16px; overflow-y: auto; max-height: 60vh; }
+        .detail-section { margin-bottom: 16px; }
+        .detail-label { font-size: 12px; color: var(--text-light); margin-bottom: 4px; }
+        .detail-value { font-size: 14px; }
+        .belief-item { padding: 8px; background: var(--bg); border-radius: 6px; margin-bottom: 6px; }
+        .belief-key { font-weight: 600; font-size: 13px; }
+        .belief-value { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+
+        /* Toast Notifications */
+        .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 8px; }
+        .toast { padding: 12px 16px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; animation: slideIn 0.3s ease; }
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--warning); }
+        .toast.info { border-left: 4px solid var(--primary); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* Inline Loading */
+        .loading-inline { display: inline-flex; align-items: center; gap: 6px; }
+        .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .loading-text { margin-top: 16px; color: #666; }
-        .comparison-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        .comparison-table th, .comparison-table td {
-            padding: 8px 12px; text-align: left; border-bottom: 1px solid #f0f0f0;
-        }
-        .comparison-table th { font-weight: 600; font-size: 12px; color: #666; }
-        .comparison-table .positive { color: #38ef7d; }
-        .comparison-table .negative { color: #eb3349; }
-        .header-badge {
-            padding: 4px 12px; background: rgba(255,255,255,0.2);
-            border-radius: 12px; font-size: 13px;
-        }
-        .status-badge {
-            padding: 4px 12px; border-radius: 12px; font-size: 13px;
-        }
-        .status-badge.running { background: #38ef7d; color: #333; }
-        .status-badge.completed { background: #667eea; color: white; }
-        .status-badge.pending { background: #f7b731; color: #333; }
+
+        /* Empty State */
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-light); }
+        .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+
+        /* Network Empty State */
+        .network-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-light); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+        /* Responsive */
         @media (max-width: 1200px) {
-            .app-main { flex-direction: column; }
-            .left-sidebar, .right-sidebar { width: 100%; }
+            .main { flex-direction: column; overflow: auto; }
+            .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; }
+            .sidebar .panel { flex: 1; min-width: 280px; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
 <body>
-    <div id="root">
-        <div class="loading-overlay" id="loading">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">初始化中...</div>
-        </div>
-        <div id="error-banner" style="display:none; background:#fff2f0; border:1px solid #ffccc7; padding:8px 16px; color:#ff4d4f; font-size:14px; text-align:center;"></div>
-        <div class="app-container" id="app-container">
-            <header class="app-header" id="app-header"></header>
-            <main class="app-main">
-                <aside class="panel left-sidebar" id="left-sidebar">
-                    <div class="panel-header">场景设置</div>
-                    <div class="panel-content" id="left-sidebar-content"></div>
-                </aside>
-                <section class="center-area" id="center-area"></section>
-                <aside class="panel right-sidebar" id="right-sidebar">
-                    <div class="panel-header">Agent & 干预控制</div>
-                    <div class="panel-content" id="right-sidebar-content"></div>
-                </aside>
-            </main>
-        </div>
-    </div>
+    <div id="root"></div>
 
     <script>
-        // 从config.js获取配置
-        const API_HOST = window.EVENT_SANDBOX_CONFIG.API_HOST;
-        const API_PORT = window.EVENT_SANDBOX_CONFIG.API_PORT;
-        const API_BASE_PATH = window.EVENT_SANDBOX_CONFIG.API_BASE_PATH;
-        const API_BASE = `http://${API_HOST}:${API_PORT}${API_BASE_PATH}`;
-        const API_HOST_URL = `http://${API_HOST}:${API_PORT}`;
+        // ==================== 配置 ====================
+        const API_BASE = `http://${window.EVENT_SANDBOX_CONFIG.API_HOST}:${window.EVENT_SANDBOX_CONFIG.API_PORT}${window.EVENT_SANDBOX_CONFIG.API_BASE_PATH}`;
+        const API_HOST_URL = `http://${window.EVENT_SANDBOX_CONFIG.API_HOST}:${window.EVENT_SANDBOX_CONFIG.API_PORT}`;
 
-        async function checkHealth() {
-            try {
-                const res = await fetch(`${API_HOST_URL}/health`);
-                return res.json();
-            } catch (e) {
-                console.error('Health check failed:', e);
-                return { status: 'error', llm_connected: false, error: e.message };
-            }
-        }
-
-        async function createSimulation(data) {
-            const res = await fetch(`${API_BASE}/simulations`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-        }
-
-        async function getSimulation(id) {
-            const res = await fetch(`${API_BASE}/simulations/${id}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-        }
-
-        async function stepSimulation(id, intervention) {
-            const res = await fetch(`${API_BASE}/simulations/${id}/step`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ simulation_id: id, intervention })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-        }
-
-        async function intervene(id, intervention) {
-            const res = await fetch(`${API_BASE}/simulations/${id}/intervene`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ simulation_id: id, intervention })
-            });
-            return res.json();
-        }
-
-        async function compareScenarios(id, params) {
-            const searchParams = new URLSearchParams({ intervention_type: params.intervention_type });
-            if (params.target) searchParams.append('target', params.target);
-            if (params.parameter) searchParams.append('parameter', params.parameter);
-            if (params.value) searchParams.append('value', params.value);
-
-            const res = await fetch(`${API_BASE}/simulations/${id}/compare?${searchParams}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-        }
-
-        // App State
+        // ==================== 状态 ====================
         const state = {
             simulation: null,
             agents: [],
@@ -246,131 +181,437 @@
             recentEvents: [],
             isLoading: false,
             error: null,
-            interventionType: 'external_event',
-            selectedAgentId: null,
-            interventionValue: '',
-            comparisonResult: null
+            selectedAgent: null,
+            interventionType: 'event',
+            toasts: []
         };
 
-        // Render Functions
-        function renderHeader() {
-            const header = document.getElementById('app-header');
-            if (!header) return;
+        // ==================== API ====================
+        async function api(path, options = {}) {
+            const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+            const res = await fetch(url, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options,
+                body: options.body ? JSON.stringify(options.body) : undefined
+            });
+            if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+            return res.json();
+        }
 
-            let statusHtml = '';
-            if (state.simulation) {
-                const statusMap = { running: ['running', '运行中'], completed: ['completed', '已完成'], paused: ['paused', '已暂停'], pending: ['pending', '待启动'] };
-                const [cls, label] = statusMap[state.simulation.status] || ['pending', '未知'];
-                statusHtml = `
-                    <span>推演: ${state.simulation.name}</span>
-                    <span class="header-badge">回合: ${state.simulation.current_round} / ${state.simulation.rounds}</span>
-                    <span class="status-badge ${cls}">${label}</span>
-                `;
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_HOST_URL}/health`);
+                return res.json();
+            } catch (e) {
+                return { status: 'error', llm_connected: false };
             }
-            header.innerHTML = `
-                <div style="display: flex; align-items: center;">
-                    <h1>EventSandbox</h1>
-                    <span class="subtitle">智能事件推演沙盘</span>
+        }
+
+        async function createSimulation(data) {
+            return api('/simulations', { method: 'POST', body: data });
+        }
+
+        async function stepSimulation(id, intervention) {
+            return api(`/simulations/${id}/step`, {
+                method: 'POST',
+                body: { simulation_id: id, intervention }
+            });
+        }
+
+        // ==================== Toast通知 ====================
+        function showToast(message, type = 'info') {
+            const id = Date.now();
+            state.toasts.push({ id, message, type });
+            renderToasts();
+            setTimeout(() => {
+                state.toasts = state.toasts.filter(t => t.id !== id);
+                renderToasts();
+            }, 3000);
+        }
+
+        function renderToasts() {
+            let container = document.querySelector('.toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            container.innerHTML = state.toasts.map(t =>
+                `<div class="toast ${t.type}">
+                    <span>${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
+                    <span>${t.message}</span>
+                </div>`
+            ).join('');
+        }
+
+        // ==================== 工具函数 ====================
+        function formatSentiment(v) {
+            const percent = (v * 100).toFixed(0);
+            return v >= 0 ? `+${percent}%` : `${percent}%`;
+        }
+
+        function getSentimentColor(v) {
+            if (v > 0.3) return '#38ef7d';
+            if (v < -0.3) return '#f45c43';
+            return '#f7b731';
+        }
+
+        const AGENT_TYPE_LABELS = {
+            company: '企业', competitor: '竞品', consumer: '消费者',
+            supplier: '供应商', government: '政府', regulator: '监管',
+            organization: '组织', individual: '个人'
+        };
+
+        const AGENT_TYPE_COLORS = {
+            company: '#667eea', competitor: '#f45c43', consumer: '#38ef7d',
+            supplier: '#f7b731', government: '#5b2c6f', regulator: '#e74c3c',
+            organization: '#3498db', individual: '#95a5a6'
+        };
+
+        const REL_COLORS = {
+            competitor: '#f45c43', cooperative: '#38ef7d', supply: '#f7b731',
+            demand: '#3498db', regulate: '#e74c3c', neutral: '#bdc3c7'
+        };
+
+        // ==================== 渲染 ====================
+        function render() {
+            const root = document.getElementById('root');
+            root.innerHTML = `
+                <div class="app">
+                    ${renderHeader()}
+                    <main class="main">
+                        <div class="sidebar">
+                            ${renderLeftPanel()}
+                        </div>
+                        <div class="center">
+                            ${renderCenterPanel()}
+                        </div>
+                    </main>
                 </div>
-                <div style="display: flex; align-items: center; gap: 16px;">
-                    ${statusHtml}
-                </div>
+                ${state.selectedAgent ? renderAgentModal() : ''}
+            `;
+            attachEvents();
+            if (state.simulation) {
+                setTimeout(initNetwork, 100);
+            }
+        }
+
+        function renderHeader() {
+            return `
+                <header class="header">
+                    <h1>🔮 EventSandbox</h1>
+                    ${state.simulation ? `
+                        <div class="header-info">
+                            <span class="badge">${state.simulation.name}</span>
+                            <span class="badge">回合 ${state.simulation.current_round}/${state.simulation.rounds}</span>
+                            <span class="badge" style="background: ${state.simulation.status === 'running' ? 'var(--success)' : 'var(--warning)'}">
+                                ${state.simulation.status === 'running' ? '运行中' : state.simulation.status === 'completed' ? '已完成' : '待启动'}
+                            </span>
+                        </div>
+                    ` : ''}
+                </header>
             `;
         }
 
-        function renderLeftSidebar() {
-            const sidebar = document.getElementById('left-sidebar-content');
-            if (!sidebar) return;
-
+        function renderLeftPanel() {
             if (!state.simulation) {
-                sidebar.innerHTML = `
-                    <div class="input-group">
-                        <label>场景名称</label>
-                        <input type="text" id="scenario-name" value="奶茶涨价事件推演" placeholder="输入场景名称">
-                    </div>
-                    <div class="input-group">
-                        <label>场景描述</label>
-                        <textarea id="scenario-desc" placeholder="简要描述场景背景（可选）" rows="2"></textarea>
-                    </div>
-                    <div class="input-group">
-                        <label>事件描述 *</label>
-                        <textarea id="event-text" placeholder="粘贴新闻或事件描述，例如：XX奶茶招牌产品涨价3元" rows="4"></textarea>
-                    </div>
-                    <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="handleCreate()">
-                        创建推演场景
-                    </button>
-                `;
-            } else {
-                sidebar.innerHTML = `
-                    <div style="margin-bottom: 12px;"><strong>场景:</strong> ${state.simulation.name}</div>
-                    <div style="margin-bottom: 12px;"><strong>状态:</strong> ${state.simulation.status}</div>
-                    <div style="margin-bottom: 12px;"><strong>智能体数量:</strong> ${state.simulation.agents.length}</div>
-                    <div style="margin-bottom: 12px;"><strong>当前回合:</strong> ${state.simulation.current_round} / ${state.simulation.rounds}</div>
-                    <div class="controls" style="margin-top: 16px;">
-                        <button class="btn btn-primary" style="flex: 1" onclick="handleStep()" ${state.isLoading || state.simulation.status === 'completed' ? 'disabled' : ''}>
-                            ${state.simulation.status === 'completed' ? '已完成' : '推进一回合'}
-                        </button>
-                        <button class="btn" onclick="handleReset()">重置</button>
+                return `
+                    <div class="panel">
+                        <div class="panel-header">创建推演</div>
+                        <div class="panel-body">
+                            <div class="form-group">
+                                <label>场景名称</label>
+                                <input type="text" class="form-control" id="scenario-name" value="奶茶涨价事件推演">
+                            </div>
+                            <div class="form-group">
+                                <label>事件描述（必填）</label>
+                                <textarea class="form-control" id="event-text" placeholder="输入事件描述，如：XX奶茶招牌产品涨价3元"></textarea>
+                            </div>
+                            <button class="btn btn-primary btn-block" onclick="handleCreate()">
+                                创建推演场景
+                            </button>
+                        </div>
                     </div>
                 `;
             }
+
+            return `
+                <div class="panel">
+                    <div class="panel-header">
+                        <span>智能体 (${state.agents.length})</span>
+                    </div>
+                    <div class="panel-body" style="max-height: 300px; overflow-y: auto;">
+                        ${state.agents.map(agent => {
+                            const sentimentBelief = agent.beliefs?.find(b => b.key === 'sentiment');
+                            const sentiment = sentimentBelief ? Number(sentimentBelief.value) : 0;
+                            const color = AGENT_TYPE_COLORS[agent.type] || '#95a5a6';
+                            return `
+                                <div class="agent-card ${state.selectedAgent?.id === agent.id ? 'selected' : ''}" onclick="selectAgent('${agent.id}')">
+                                    <div class="agent-card-header">
+                                        <span class="agent-name">${agent.name}</span>
+                                        <span class="agent-type">${AGENT_TYPE_LABELS[agent.type] || agent.type}</span>
+                                    </div>
+                                    <div class="agent-meta">
+                                        情绪: <strong style="color: ${getSentimentColor(sentiment)}">${formatSentiment(sentiment)}</strong>
+                                    </div>
+                                    <div class="sentiment-bar">
+                                        <div class="sentiment-fill" style="width: ${Math.abs(sentiment) * 100}%; background: ${getSentimentColor(sentiment)}"></div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span>干预控制</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="intervention-tabs">
+                            <button class="intervention-tab ${state.interventionType === 'event' ? 'active' : ''}" onclick="setInterventionType('event')">注入事件</button>
+                            <button class="intervention-tab ${state.interventionType === 'agent' ? 'active' : ''}" onclick="setInterventionType('agent')">影响Agent</button>
+                            <button class="intervention-tab ${state.interventionType === 'env' ? 'active' : ''}" onclick="setInterventionType('env')">全局环境</button>
+                        </div>
+
+                        ${state.interventionType === 'event' ? `
+                            <div class="quick-actions">
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('监管部门约谈')">监管约谈</button>
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('竞争对手大幅降价')">竞品降价</button>
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('负面新闻曝光')">负面新闻</button>
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('促销活动启动')">促俏活动</button>
+                            </div>
+                            <textarea class="form-control" id="intervention-value" rows="2" placeholder="描述要注入的事件"></textarea>
+                        ` : ''}
+
+                        ${state.interventionType === 'agent' ? `
+                            <div class="form-group">
+                                <label>选择Agent</label>
+                                <select class="form-control" id="intervention-agent">
+                                    <option value="">-- 选择 --</option>
+                                    ${state.agents.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="quick-actions">
+                                <button class="btn btn-outline btn-sm" onclick="setAgentInfluence('积极情绪', '相信产品质量优秀')">积极情绪</button>
+                                <button class="btn btn-outline btn-sm" onclick="setAgentInfluence('消极情绪', '担心声誉受损')">消极情绪</button>
+                                <button class="btn btn-outline btn-sm" onclick="setAgentInfluence('新信息', '得知竞品推出新品')">注入信息</button>
+                            </div>
+                            <textarea class="form-control" id="intervention-value" rows="2" placeholder="描述影响内容"></textarea>
+                        ` : ''}
+
+                        ${state.interventionType === 'env' ? `
+                            <div class="quick-actions">
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('市场整体情绪变差')">市场情绪差</button>
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('经济环境恶化')">经济恶化</button>
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('消费者信心下降')">信心下降</button>
+                                <button class="btn btn-outline btn-sm" onclick="setQuickEvent('行业政策收紧')">政策收紧</button>
+                            </div>
+                            <textarea class="form-control" id="intervention-value" rows="2" placeholder="描述环境变化"></textarea>
+                        ` : ''}
+
+                        <button class="btn btn-primary btn-block" style="margin-top: 12px;" onclick="handleIntervene()" ${state.isLoading ? 'disabled' : ''}>
+                            ${state.isLoading ? '<span class="spinner"></span> 处理中...' : '注入干预'}
+                        </button>
+                    </div>
+                </div>
+
+                <button class="btn btn-outline btn-block" onclick="handleReset()">重置推演</button>
+            `;
         }
 
         function renderCenterPanel() {
-            const centerArea = document.getElementById('center-area');
-            if (!centerArea) return;
-
             if (!state.simulation) {
-                centerArea.innerHTML = `
+                return `
                     <div class="panel" style="flex: 1;">
-                        <div class="panel-header">可视化区域</div>
-                        <div class="panel-content">
+                        <div class="panel-body">
                             <div class="empty-state">
-                                <div class="empty-state-icon">🔮</div>
-                                <div>创建推演场景后即可开始可视化分析</div>
+                                <div class="empty-icon">🔮</div>
+                                <div>创建推演场景后开始可视化分析</div>
                             </div>
                         </div>
                     </div>
                 `;
-                return;
             }
 
-            centerArea.innerHTML = `
-                <div class="panel visualization-area">
+            return `
+                <div class="panel" style="flex: 1;">
                     <div class="panel-header">
                         <span>Agent关系网络</span>
-                        <span style="font-weight: normal; font-size: 12px; color: #999;">实时展示Agent间的互动关系</span>
+                        <span style="font-weight: normal; font-size: 12px; color: #999;">拖拽节点 · 滚轮缩放</span>
                     </div>
-                    <div class="panel-content" style="padding: 0;" id="network-container">
-                        ${renderNetwork()}
+                    <div class="panel-body" style="padding: 0;">
+                        <div class="network-container" id="network-container">
+                            ${(!state.topology || state.topology.nodes.length === 0) ? `
+                                <div class="network-empty">暂无网络数据</div>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
-                ${renderMetrics()}
-                ${renderEvents()}
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span>指标仪表盘</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="metrics-grid">
+                            <div class="metric-card ${state.simulation.metrics.overall_sentiment >= 0 ? 'positive' : 'negative'}">
+                                <div class="metric-value">${formatSentiment(state.simulation.metrics.overall_sentiment)}</div>
+                                <div class="metric-label">整体情绪</div>
+                            </div>
+                            <div class="metric-card neutral">
+                                <div class="metric-value">${(state.simulation.metrics.market_activity * 100).toFixed(0)}%</div>
+                                <div class="metric-label">市场活跃度</div>
+                            </div>
+                            <div class="metric-card positive">
+                                <div class="metric-value">${(state.simulation.metrics.cooperation_level * 100).toFixed(0)}%</div>
+                                <div class="metric-label">合作水平</div>
+                            </div>
+                            <div class="metric-card ${state.simulation.metrics.conflict_level > 0.5 ? 'negative' : 'neutral'}">
+                                <div class="metric-value">${(state.simulation.metrics.conflict_level * 100).toFixed(0)}%</div>
+                                <div class="metric-label">冲突程度</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span>事件时间轴</span>
+                        <span style="font-weight: normal; font-size: 12px; color: #999;">
+                            ${state.simulation.events?.length || 0} 个事件
+                        </span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="timeline">
+                            ${(state.simulation.events || []).slice(-8).reverse().map((ev, i) => `
+                                <div class="event-item ${ev.type}">
+                                    <div class="event-meta">
+                                        <span class="event-type ${ev.type}">${ev.type === 'action' ? '行动' : ev.type === 'external' ? '外部' : ev.type === 'intervention' ? '干预' : '系统'}</span>
+                                        <span>第 ${ev.round} 回合</span>
+                                        ${i === 0 ? '<span style="color: var(--primary)">NEW</span>' : ''}
+                                    </div>
+                                    <div class="event-desc">${ev.description?.substring(0, 80)}${ev.description?.length > 80 ? '...' : ''}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-success btn-block" onclick="handleStep()" ${state.isLoading || state.simulation.status === 'completed' ? 'disabled' : ''}>
+                    ${state.isLoading ? '<span class="spinner"></span> 推演中...' : state.simulation.status === 'completed' ? '推演已完成' : '推进一回合 →'}
+                </button>
             `;
-
-            // Initialize D3 network after render
-            setTimeout(() => initNetwork(), 100);
         }
 
-        function renderNetwork() {
-            if (!state.topology || !state.topology.nodes || state.topology.nodes.length === 0) {
-                return '<div style="display: flex; align-items: center; justify-content: center; height: 400px; color: #999;">暂无网络数据</div>';
-            }
-            return '<svg id="network-svg" width="100%" height="400"></svg>';
+        function renderAgentModal() {
+            const agent = state.selectedAgent;
+            if (!agent) return '';
+
+            const sentimentBelief = agent.beliefs?.find(b => b.key === 'sentiment');
+            const sentiment = sentimentBelief ? Number(sentimentBelief.value) : 0;
+
+            return `
+                <div class="modal-overlay" onclick="closeAgentModal()">
+                    <div class="modal" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <span class="modal-title">${agent.name}</span>
+                            <button class="modal-close" onclick="closeAgentModal()">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="detail-section">
+                                <div class="detail-label">类型</div>
+                                <div class="detail-value">${AGENT_TYPE_LABELS[agent.type] || agent.type}</div>
+                            </div>
+                            <div class="detail-section">
+                                <div class="detail-label">状态</div>
+                                <div class="detail-value">${agent.status}</div>
+                            </div>
+                            <div class="detail-section">
+                                <div class="detail-label">当前情绪</div>
+                                <div class="detail-value" style="color: ${getSentimentColor(sentiment)}">
+                                    ${formatSentiment(sentiment)}
+                                </div>
+                            </div>
+                            ${agent.personality ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">性格特征</div>
+                                    <div class="detail-value">${agent.personality}</div>
+                                </div>
+                            ` : ''}
+                            ${agent.goals?.length ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">目标</div>
+                                    <div class="detail-value">${agent.goals.join(' · ')}</div>
+                                </div>
+                            ` : ''}
+                            ${agent.beliefs?.length ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">信念</div>
+                                    ${agent.beliefs.map(b => `
+                                        <div class="belief-item">
+                                            <div class="belief-key">${b.key}</div>
+                                            <div class="belief-value">${b.value} (置信度: ${(b.confidence * 100).toFixed(0)}%)</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                            ${agent.relationships?.length ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">关系 (${agent.relationships.length})</div>
+                                    ${agent.relationships.map(r => {
+                                        const target = state.agents.find(a => a.id === r.target_agent_id);
+                                        return target ? `
+                                            <div class="belief-item">
+                                                <div class="belief-key">${target.name}</div>
+                                                <div class="belief-value">${r.type} (强度: ${(Math.abs(r.strength) * 100).toFixed(0)}%)</div>
+                                            </div>
+                                        ` : '';
+                                    }).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
         }
+
+        // ==================== 网络图 ====================
+        let networkSimulation = null;
 
         function initNetwork() {
-            if (!state.topology || !state.topology.nodes || state.topology.nodes.length === 0) return;
+            const container = document.getElementById('network-container');
+            if (!container || !state.topology || state.topology.nodes.length === 0) return;
+
+            container.innerHTML = `
+                <div class="network-controls">
+                    <button onclick="zoomNetwork(1.2)" title="放大">+</button>
+                    <button onclick="zoomNetwork(0.8)" title="缩小">−</button>
+                    <button onclick="resetNetworkZoom()" title="重置">↺</button>
+                </div>
+                <svg class="network-svg" id="network-svg"></svg>
+            `;
 
             const svg = d3.select('#network-svg');
-            if (svg.empty()) return;
-
             svg.selectAll('*').remove();
 
-            const width = 800;
-            const height = 400;
+            const rect = container.getBoundingClientRect();
+            const width = rect.width || 600;
+            const height = rect.height || 350;
 
+            svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+            // Zoom behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.3, 3])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            svg.call(zoom);
+
+            const g = svg.append('g');
+
+            // Create nodes
             const nodes = state.topology.nodes.map((n, i) => {
                 const angle = (2 * Math.PI * i) / state.topology.nodes.length;
                 return {
@@ -384,6 +625,7 @@
 
             const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
+            // Create links
             const links = (state.topology.edges || []).map(e => {
                 const sourceNode = state.topology.nodes.find(n => n.id === e.source);
                 const targetNode = state.topology.nodes.find(n => n.id === e.target);
@@ -395,51 +637,54 @@
                 };
             }).filter(l => l.source && l.target && nodeMap.has(l.source) && nodeMap.has(l.target));
 
-            const typeColors = {
-                company: '#667eea', competitor: '#f45c43', consumer: '#38ef7d',
-                supplier: '#f7b731', government: '#5b2c6f', regulator: '#e74c3c',
-                organization: '#3498db', individual: '#95a5a6'
-            };
-
-            const relColors = {
-                competitor: '#f45c43', cooperative: '#38ef7d', supply: '#f7b731',
-                demand: '#3498db', regulate: '#e74c3c', influence: '#9b59b6', neutral: '#bdc3c7'
-            };
-
-            const simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(links).id(d => d.id).distance(120))
-                .force('charge', d3.forceManyBody().strength(-300))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(40));
-
-            const container = svg.append('g');
-
-            const link = container.append('g')
+            // Links
+            const link = g.append('g')
                 .selectAll('line')
                 .data(links)
                 .join('line')
-                .attr('stroke', d => relColors[d.relation] || '#bdc3c7')
-                .attr('stroke-opacity', 0.6)
+                .attr('class', 'link')
+                .attr('stroke', d => REL_COLORS[d.relation] || '#bdc3c7')
                 .attr('stroke-width', d => Math.max(1, d.weight * 3));
 
-            const node = container.append('g')
+            // Nodes
+            const node = g.append('g')
                 .selectAll('g')
                 .data(nodes)
                 .join('g')
-                .style('cursor', 'pointer');
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', (event, d) => {
+                        if (!event.active) networkSimulation.alphaTarget(0.3).restart();
+                        d.fx = d.x;
+                        d.fy = d.y;
+                    })
+                    .on('drag', (event, d) => {
+                        d.fx = event.x;
+                        d.fy = event.y;
+                    })
+                    .on('end', (event, d) => {
+                        if (!event.active) networkSimulation.alphaTarget(0);
+                        d.fx = null;
+                        d.fy = null;
+                    })
+                )
+                .on('click', (event, d) => {
+                    const agent = state.agents.find(a => a.id === d.id);
+                    if (agent) {
+                        state.selectedAgent = agent;
+                        render();
+                    }
+                });
 
             node.append('circle')
                 .attr('r', 24)
-                .attr('fill', d => typeColors[d.type] || '#95a5a6')
-                .attr('stroke', '#fff')
-                .attr('stroke-width', 2);
+                .attr('fill', d => AGENT_TYPE_COLORS[d.type] || '#95a5a6');
 
             node.append('text')
-                .text(d => d.label.substring(0, 8))
+                .text(d => d.label.substring(0, 6))
                 .attr('text-anchor', 'middle')
                 .attr('dy', 40)
-                .attr('font-size', '11px')
-                .attr('fill', '#333');
+                .attr('font-size', '11px');
 
             node.append('text')
                 .text(d => (d.type || 'a').charAt(0).toUpperCase())
@@ -447,401 +692,202 @@
                 .attr('dy', 5)
                 .attr('font-size', '14px')
                 .attr('font-weight', 'bold')
-                .attr('fill', '#fff');
-
-            simulation.on('tick', () => {
-                link
-                    .attr('x1', d => d.source.x)
-                    .attr('y1', d => d.source.y)
-                    .attr('x2', d => d.target.x)
-                    .attr('y2', d => d.target.y);
-                node.attr('transform', d => `translate(${d.x},${d.y})`);
-            });
+                .attr('fill', '#fff')
+                .attr('pointer-events', 'none');
 
             // Legend
-            const legend = svg.append('g').attr('transform', `translate(${width - 100}, 10)`);
-            Object.entries(typeColors).slice(0, 5).forEach(([type, color], i) => {
-                const g = legend.append('g').attr('transform', `translate(0, ${i * 20})`);
-                g.append('circle').attr('r', 6).attr('fill', color);
-                g.append('text').text(type).attr('x', 12).attr('y', 4).attr('font-size', '10px').attr('fill', '#666');
+            const legend = d3.select('#network-container').append('div')
+                .attr('class', 'legend');
+            Object.entries(AGENT_TYPE_COLORS).slice(0, 5).forEach(([type, color]) => {
+                legend.append('div')
+                    .attr('class', 'legend-item')
+                    .html(`<div class="legend-dot" style="background: ${color}"></div><span>${type}</span>`);
             });
+
+            // Simulation
+            if (networkSimulation) networkSimulation.stop();
+            networkSimulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.id).distance(120))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(40))
+                .on('tick', () => {
+                    link
+                        .attr('x1', d => d.source.x)
+                        .attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x)
+                        .attr('y2', d => d.target.y);
+                    node.attr('transform', d => `translate(${d.x},${d.y})`);
+                });
+
+            // Store zoom for controls
+            container.zoomBehavior = zoom;
+            container.svg = svg;
         }
 
-        function renderMetrics() {
-            const metrics = state.simulation?.metrics || {};
-            const cards = [
-                { label: '整体情绪', value: metrics.overall_sentiment || 0, fmt: v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%', cls: v => v >= 0 ? 'positive' : 'negative' },
-                { label: '市场活跃度', value: metrics.market_activity || 0, fmt: v => (v * 100).toFixed(1) + '%', cls: () => '' },
-                { label: '合作水平', value: metrics.cooperation_level || 0, fmt: v => (v * 100).toFixed(1) + '%', cls: () => 'positive' },
-                { label: '冲突程度', value: metrics.conflict_level || 0, fmt: v => (v * 100).toFixed(1) + '%', cls: v => v > 0.5 ? 'negative' : '' }
-            ];
-
-            return `
-                <div class="panel">
-                    <div class="panel-header">
-                        <span>指标仪表盘</span>
-                        <span style="font-weight: normal; font-size: 12px; color: #999;">实时监控推演指标变化</span>
-                    </div>
-                    <div class="panel-content">
-                        <div class="metrics-dashboard">
-                            ${cards.map(c => `
-                                <div class="metric-card ${c.cls(c.value)}">
-                                    <div class="metric-value">${c.fmt(c.value)}</div>
-                                    <div class="metric-label">${c.label}</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderEvents() {
-            const typeLabels = { action: '行动', reaction: '反应', external: '外部', intervention: '干预', system: '系统' };
-            const typeColors = { action: '#667eea', reaction: '#38ef7d', external: '#f7b731', intervention: '#f45c43', system: '#95a5a6' };
-
-            const events = state.simulation?.events || [];
-            const recentEvents = events.slice(-10).reverse();
-
-            if (recentEvents.length === 0) {
-                return `
-                    <div class="panel events-panel">
-                        <div class="panel-header">事件时间轴</div>
-                        <div class="panel-content">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">📋</div>
-                                <div>暂无事件记录</div>
-                                <div style="font-size: 12px; margin-top: 4px;">点击"推进一回合"开始推演</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+        function zoomNetwork(scale) {
+            const container = document.getElementById('network-container');
+            if (container?.svg) {
+                container.svg.transition().duration(300).call(container.zoomBehavior.scaleBy, scale);
             }
-
-            return `
-                <div class="panel events-panel">
-                    <div class="panel-header">
-                        <span>事件时间轴</span>
-                        <span style="font-weight: normal; font-size: 12px; color: #999;">共 ${events.length} 个事件</span>
-                    </div>
-                    <div class="panel-content" style="max-height: 220px; overflow-y: auto;">
-                        ${recentEvents.map((ev, idx) => `
-                            <div class="event-item" style="border-left-color: ${typeColors[ev.type] || '#667eea'}">
-                                <div class="event-round">
-                                    <span style="display: inline-block; padding: 1px 6px; background: ${typeColors[ev.type] || '#667eea'}; color: white; border-radius: 4px; font-size: 10px; margin-right: 8px;">
-                                        ${typeLabels[ev.type] || ev.type}
-                                    </span>
-                                    第 ${ev.round} 回合
-                                    ${idx === 0 ? '<span style="color: #667eea; margin-left: 8px;">NEW</span>' : ''}
-                                </div>
-                                <div class="event-description">${ev.description}</div>
-                                ${ev.involved_agents?.length ? `<div class="event-agents">涉及: ${ev.involved_agents.length} 个主体</div>` : ''}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
         }
 
-        function renderRightSidebar() {
-            const sidebar = document.getElementById('right-sidebar-content');
-            if (!sidebar) return;
-
-            if (!state.simulation) {
-                sidebar.innerHTML = `
-                    <div class="empty-state">
-                        <div>创建推演场景后即可管理Agent和干预</div>
-                    </div>
-                `;
-                return;
+        function resetNetworkZoom() {
+            const container = document.getElementById('network-container');
+            if (container?.svg) {
+                container.svg.transition().duration(300).call(container.zoomBehavior.transform, d3.zoomIdentity);
             }
-
-            const agents = state.simulation.agents || [];
-            const typeLabels = { company: '企业', competitor: '竞品', consumer: '消费者', supplier: '供应商', government: '政府', regulator: '监管', organization: '组织', individual: '个人' };
-
-            let comparisonHtml = '';
-            if (state.comparisonResult) {
-                comparisonHtml = `
-                    <div>
-                        <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">对比分析报告</h4>
-                        <table class="comparison-table">
-                            <thead><tr><th>指标</th><th>无干预</th><th>有干预</th><th>变化</th></tr></thead>
-                            <tbody>
-                                ${(state.comparisonResult.comparison || []).map(item => `
-                                    <tr>
-                                        <td>${item.metric}</td>
-                                        <td>${item.difference < 0 ?
-                                            (state.comparisonResult.without_intervention?.[item.metric]?.toFixed(3) || '-') :
-                                            (state.comparisonResult.with_intervention?.[item.metric]?.toFixed(3) || '-')}</td>
-                                        <td>${item.difference >= 0 ?
-                                            (state.comparisonResult.with_intervention?.[item.metric]?.toFixed(3) || '-') :
-                                            (state.comparisonResult.without_intervention?.[item.metric]?.toFixed(3) || '-')}</td>
-                                        <td class="${item.difference >= 0 ? 'positive' : 'negative'}">
-                                            ${item.difference >= 0 ? '+' : ''}${(item.percentage_change || 0).toFixed(1)}%
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            }
-
-            sidebar.innerHTML = `
-                <div>
-                    <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">智能体列表 (${agents.length})</h4>
-                    <div class="agent-list" style="max-height: 200px; overflow-y: auto;">
-                        ${agents.map(agent => {
-                            const sentimentBelief = agent.beliefs?.find(b => b.key === 'sentiment');
-                            const sentiment = sentimentBelief ? Number(sentimentBelief.value) : 0;
-                            const isSelected = state.selectedAgentId === agent.id;
-                            return `
-                                <div class="agent-card ${isSelected ? 'selected' : ''}" onclick="selectAgent('${agent.id}')">
-                                    <div class="agent-card-header">
-                                        <span class="agent-name">${agent.name}</span>
-                                        <div style="display: flex; align-items: center; gap: 8px;">
-                                            <span class="agent-type">${typeLabels[agent.type] || agent.type}</span>
-                                            <span class="agent-status ${agent.status}"></span>
-                                        </div>
-                                    </div>
-                                    <div class="agent-sentiment">情绪: ${sentiment >= 0 ? '+' : ''}${(sentiment * 100).toFixed(1)}%</div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-
-                <div class="intervention-form">
-                    <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">干预控制</h4>
-
-                    <div class="intervention-type">
-                        <button class="${state.interventionType === 'global_param' ? 'active' : ''}" onclick="setInterventionType('global_param')">全局参数</button>
-                        <button class="${state.interventionType === 'agent_state' ? 'active' : ''}" onclick="setInterventionType('agent_state')">Agent状态</button>
-                        <button class="${state.interventionType === 'external_event' ? 'active' : ''}" onclick="setInterventionType('external_event')">外部事件</button>
-                    </div>
-
-                    ${state.interventionType === 'agent_state' ? `
-                        <div class="input-group">
-                            <label>选择Agent</label>
-                            <select id="intervention-agent" onchange="state.selectedAgentId = this.value">
-                                <option value="">选择要干预的Agent</option>
-                                ${agents.map(a => `<option value="${a.id}" ${state.selectedAgentId === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
-                            </select>
-                        </div>
-                    ` : ''}
-
-                    ${state.interventionType === 'agent_state' ? `
-                        <div class="input-group">
-                            <label>参数</label>
-                            <select id="intervention-param">
-                                <option value="sentiment">情绪值</option>
-                                <option value="belief">添加信念</option>
-                            </select>
-                        </div>
-                    ` : ''}
-
-                    <div class="input-group">
-                        <label>${state.interventionType === 'external_event' ? '事件描述' : '数值'}</label>
-                        ${state.interventionType === 'external_event' ?
-                            `<textarea id="intervention-value" rows="2" placeholder="描述要注入的外部事件"></textarea>` :
-                            `<input type="number" id="intervention-value" step="0.1" min="-1" max="1" placeholder="输入数值 (-1 到 1)">`
-                        }
-                    </div>
-
-                    <div class="controls">
-                        <button class="btn btn-primary" style="flex: 1" onclick="handleIntervene()">注入干预</button>
-                        <button class="btn" onclick="handleCompare()">对比分析</button>
-                    </div>
-                </div>
-
-                ${comparisonHtml}
-            `;
         }
 
-        function render() {
-            // 显示错误
-            const errorBanner = document.getElementById('error-banner');
-            if (state.error) {
-                errorBanner.style.display = 'block';
-                errorBanner.textContent = state.error;
-            } else {
-                errorBanner.style.display = 'none';
-            }
-
-            renderHeader();
-            renderLeftSidebar();
-            renderCenterPanel();
-            renderRightSidebar();
+        // ==================== 事件处理 ====================
+        function attachEvents() {
+            // Events attached via onclick
         }
 
-        // Event Handlers
         async function handleCreate() {
             const name = document.getElementById('scenario-name')?.value || '新推演';
-            const desc = document.getElementById('scenario-desc')?.value || '';
-            const eventText = document.getElementById('event-text')?.value || '';
+            const eventText = document.getElementById('event-text')?.value?.trim();
 
-            if (!eventText.trim()) {
-                alert('请输入事件描述');
+            if (!eventText) {
+                showToast('请输入事件描述', 'error');
                 return;
             }
 
-            setLoading(true);
+            state.isLoading = true;
+            render();
+
             try {
-                const data = await createSimulation({ name, description: desc, event_text: eventText });
+                const data = await createSimulation({ name, event_text: eventText });
                 state.simulation = data.simulation;
                 state.agents = data.generated_agents;
                 state.topology = data.topology;
-                state.recentEvents = [];
-                render();
+                showToast('推演场景创建成功', 'success');
             } catch (e) {
-                state.error = e.message;
-                alert('创建失败: ' + e.message);
+                showToast('创建失败: ' + e.message, 'error');
             }
-            setLoading(false);
+
+            state.isLoading = false;
+            render();
         }
 
         async function handleStep() {
-            setLoading(true);
+            state.isLoading = true;
+            render();
+
             try {
                 const data = await stepSimulation(state.simulation.id);
                 state.simulation = data.simulation;
                 state.agents = data.simulation.agents;
-                state.recentEvents = data.simulation.events.slice(-10);
-                render();
             } catch (e) {
-                state.error = e.message;
-                alert('推进失败: ' + e.message);
+                showToast('推演失败: ' + e.message, 'error');
             }
-            setLoading(false);
+
+            state.isLoading = false;
+            render();
         }
 
         async function handleIntervene() {
             const valueEl = document.getElementById('intervention-value');
-            if (!valueEl?.value && state.interventionType === 'external_event') {
-                alert('请输入事件描述');
+            const text = valueEl?.value?.trim();
+
+            if (!text) {
+                showToast('请输入干预内容', 'error');
                 return;
             }
 
-            const intervention = {
-                id: `int_${Date.now()}`,
-                type: state.interventionType,
-                target: state.interventionType === 'agent_state' ? state.selectedAgentId : undefined,
-                parameter: state.interventionType === 'agent_state' ? document.getElementById('intervention-param')?.value : undefined,
-                value: state.interventionType === 'external_event' ? valueEl?.value : parseFloat(valueEl?.value) || valueEl?.value,
-                timestamp: Date.now(),
-                round: state.simulation.current_round
-            };
+            state.isLoading = true;
+            render();
 
-            setLoading(true);
             try {
+                let intervention = {
+                    id: `int_${Date.now()}`,
+                    type: 'external_event',
+                    value: text,
+                    timestamp: Date.now(),
+                    round: state.simulation.current_round
+                };
+
+                if (state.interventionType === 'agent') {
+                    const agentId = document.getElementById('intervention-agent')?.value;
+                    if (!agentId) {
+                        showToast('请选择要影响的Agent', 'error');
+                        state.isLoading = false;
+                        render();
+                        return;
+                    }
+                    intervention = {
+                        ...intervention,
+                        type: 'agent_state',
+                        target: agentId,
+                        parameter: 'belief',
+                        value: { key: 'intervention', content: text }
+                    };
+                } else if (state.interventionType === 'env') {
+                    intervention.value = '【全局环境】' + text;
+                }
+
                 const data = await stepSimulation(state.simulation.id, intervention);
                 state.simulation = data.simulation;
                 state.agents = data.simulation.agents;
-                state.recentEvents = data.simulation.events.slice(-10);
-                render();
+                showToast('干预已注入', 'success');
             } catch (e) {
-                state.error = e.message;
-                alert('干预失败: ' + e.message);
+                showToast('干预失败: ' + e.message, 'error');
             }
-            setLoading(false);
-        }
 
-        async function handleCompare() {
-            const valueEl = document.getElementById('intervention-value');
-            setLoading(true);
-            try {
-                const data = await compareScenarios(state.simulation.id, {
-                    intervention_type: state.interventionType,
-                    target: state.selectedAgentId,
-                    parameter: state.interventionType === 'agent_state' ? document.getElementById('intervention-param')?.value : undefined,
-                    value: valueEl?.value
-                });
-                state.comparisonResult = data;
-                render();
-            } catch (e) {
-                state.error = e.message;
-                alert('对比失败: ' + e.message);
-            }
-            setLoading(false);
+            state.isLoading = false;
+            render();
         }
 
         function handleReset() {
             state.simulation = null;
             state.agents = [];
             state.topology = null;
-            state.recentEvents = [];
-            state.comparisonResult = null;
-            state.selectedAgentId = null;
+            state.selectedAgent = null;
             render();
+            showToast('已重置', 'info');
         }
 
         function selectAgent(id) {
-            state.selectedAgentId = state.selectedAgentId === id ? null : id;
-            renderRightSidebar();
+            const agent = state.agents.find(a => a.id === id);
+            if (agent) {
+                state.selectedAgent = state.selectedAgent?.id === id ? null : agent;
+                render();
+            }
+        }
+
+        function closeAgentModal() {
+            state.selectedAgent = null;
+            render();
         }
 
         function setInterventionType(type) {
             state.interventionType = type;
-            renderRightSidebar();
+            render();
         }
 
-        function setLoading(loading) {
-            state.isLoading = loading;
-            const overlay = document.getElementById('loading');
-            if (overlay) {
-                overlay.style.display = loading ? 'flex' : 'none';
-            }
+        function setQuickEvent(text) {
+            const el = document.getElementById('intervention-value');
+            if (el) el.value = text;
         }
 
-        // Initialize
+        function setAgentInfluence(type, text) {
+            setQuickEvent(text);
+        }
+
+        // ==================== 初始化 ====================
         async function init() {
-            console.log('Init started, API_BASE:', API_BASE);
             try {
                 const health = await checkHealth();
-                console.log('Backend health:', health);
-
                 if (health.status === 'error') {
-                    state.error = '无法连接到后端服务。请确保后端服务已启动在 ' + API_BASE;
+                    showToast('无法连接后端服务，请确保后端已启动', 'error');
                 }
             } catch (e) {
-                console.error('Init error:', e);
-                state.error = '初始化失败: ' + e.message;
+                showToast('初始化失败', 'error');
             }
-
-            console.log('Rendering UI...');
-            // 渲染UI
-            try {
-                render();
-                console.log('Render complete');
-            } catch (e) {
-                console.error('Render error:', e);
-                document.getElementById('root').innerHTML = '<div style="padding:20px;color:red;">渲染错误: ' + e.message + '</div>';
-            }
-
-            // 隐藏加载遮罩，显示主界面
-            const overlay = document.getElementById('loading');
-            if (overlay) {
-                overlay.style.display = 'none';
-                document.getElementById('app-container').classList.add('ready');
-                console.log('Loading hidden');
-            }
+            render();
         }
 
-        // 页面加载完成后初始化
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
-
-        // 备用：如果3秒后还在转圈，强制关闭loading
-        setTimeout(() => {
-            const overlay = document.getElementById('loading');
-            if (overlay && overlay.style.display !== 'none') {
-                console.log('强制关闭loading');
-                overlay.style.display = 'none';
-            }
-        }, 3000);
+        init();
     </script>
 </body>
 </html>
