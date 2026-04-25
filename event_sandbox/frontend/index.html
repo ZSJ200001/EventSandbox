@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>
     <script src="https://unpkg.com/antd@5.12.0/dist/antd.min.js"></script>
     <script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
+    <script src="config.js"></script>
     <style>
         :root {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -21,6 +22,8 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { margin: 0; min-height: 100vh; }
         #root { min-height: 100vh; }
+        #app-container { display: none; }
+        #app-container.ready { display: flex; }
         .app-container { display: flex; flex-direction: column; min-height: 100vh; }
         .app-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -154,17 +157,39 @@
             <div class="loading-spinner"></div>
             <div class="loading-text">初始化中...</div>
         </div>
+        <div id="error-banner" style="display:none; background:#fff2f0; border:1px solid #ffccc7; padding:8px 16px; color:#ff4d4f; font-size:14px; text-align:center;"></div>
+        <div class="app-container" id="app-container">
+            <header class="app-header" id="app-header"></header>
+            <main class="app-main">
+                <aside class="panel left-sidebar" id="left-sidebar">
+                    <div class="panel-header">场景设置</div>
+                    <div class="panel-content" id="left-sidebar-content"></div>
+                </aside>
+                <section class="center-area" id="center-area"></section>
+                <aside class="panel right-sidebar" id="right-sidebar">
+                    <div class="panel-header">Agent & 干预控制</div>
+                    <div class="panel-content" id="right-sidebar-content"></div>
+                </aside>
+            </main>
+        </div>
     </div>
 
     <script>
-        // API Functions
-        const API_BASE = '/api';
+        // 从config.js获取配置
+        const API_HOST = window.EVENT_SANDBOX_CONFIG.API_HOST;
+        const API_PORT = window.EVENT_SANDBOX_CONFIG.API_PORT;
+        const API_BASE_PATH = window.EVENT_SANDBOX_CONFIG.API_BASE_PATH;
+        const API_BASE = `http://${API_HOST}:${API_PORT}${API_BASE_PATH}`;
+        const API_HOST_URL = `http://${API_HOST}:${API_PORT}`;
 
         async function checkHealth() {
             try {
-                const res = await fetch('/api/health');
+                const res = await fetch(`${API_HOST_URL}/health`);
                 return res.json();
-            } catch { return { status: 'error', llm_connected: false }; }
+            } catch (e) {
+                console.error('Health check failed:', e);
+                return { status: 'error', llm_connected: false, error: e.message };
+            }
         }
 
         async function createSimulation(data) {
@@ -229,7 +254,7 @@
 
         // Render Functions
         function renderHeader() {
-            const header = document.querySelector('.app-header');
+            const header = document.getElementById('app-header');
             if (!header) return;
 
             let statusHtml = '';
@@ -254,7 +279,7 @@
         }
 
         function renderLeftSidebar() {
-            const sidebar = document.querySelector('.left-sidebar .panel-content');
+            const sidebar = document.getElementById('left-sidebar-content');
             if (!sidebar) return;
 
             if (!state.simulation) {
@@ -292,7 +317,7 @@
         }
 
         function renderCenterPanel() {
-            const centerArea = document.querySelector('.center-area');
+            const centerArea = document.getElementById('center-area');
             if (!centerArea) return;
 
             if (!state.simulation) {
@@ -519,7 +544,7 @@
         }
 
         function renderRightSidebar() {
-            const sidebar = document.querySelector('.right-sidebar .panel-content');
+            const sidebar = document.getElementById('right-sidebar-content');
             if (!sidebar) return;
 
             if (!state.simulation) {
@@ -634,6 +659,15 @@
         }
 
         function render() {
+            // 显示错误
+            const errorBanner = document.getElementById('error-banner');
+            if (state.error) {
+                errorBanner.style.display = 'block';
+                errorBanner.textContent = state.error;
+            } else {
+                errorBanner.style.display = 'none';
+            }
+
             renderHeader();
             renderLeftSidebar();
             renderCenterPanel();
@@ -761,20 +795,53 @@
 
         // Initialize
         async function init() {
-            const health = await checkHealth();
-            console.log('Backend health:', health);
+            console.log('Init started, API_BASE:', API_BASE);
+            try {
+                const health = await checkHealth();
+                console.log('Backend health:', health);
 
-            setLoading(false);
-            render();
+                if (health.status === 'error') {
+                    state.error = '无法连接到后端服务。请确保后端服务已启动在 ' + API_BASE;
+                }
+            } catch (e) {
+                console.error('Init error:', e);
+                state.error = '初始化失败: ' + e.message;
+            }
 
-            // Hide loading after init
-            setTimeout(() => {
-                const overlay = document.getElementById('loading');
-                if (overlay) overlay.style.display = 'none';
-            }, 500);
+            console.log('Rendering UI...');
+            // 渲染UI
+            try {
+                render();
+                console.log('Render complete');
+            } catch (e) {
+                console.error('Render error:', e);
+                document.getElementById('root').innerHTML = '<div style="padding:20px;color:red;">渲染错误: ' + e.message + '</div>';
+            }
+
+            // 隐藏加载遮罩，显示主界面
+            const overlay = document.getElementById('loading');
+            if (overlay) {
+                overlay.style.display = 'none';
+                document.getElementById('app-container').classList.add('ready');
+                console.log('Loading hidden');
+            }
         }
 
-        init();
+        // 页面加载完成后初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+        // 备用：如果3秒后还在转圈，强制关闭loading
+        setTimeout(() => {
+            const overlay = document.getElementById('loading');
+            if (overlay && overlay.style.display !== 'none') {
+                console.log('强制关闭loading');
+                overlay.style.display = 'none';
+            }
+        }, 3000);
     </script>
 </body>
 </html>
