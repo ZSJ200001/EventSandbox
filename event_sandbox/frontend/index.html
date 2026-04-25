@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EventSandbox - 智能事件推演沙盘</title>
+    <link rel="stylesheet" href="https://unpkg.com/antd@5.12.0/dist/reset.css">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>
+    <script src="https://unpkg.com/antd@5.12.0/dist/antd.min.js"></script>
+    <script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
+    <style>
+        :root {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+            color-scheme: light dark;
+            color: rgba(0, 0, 0, 0.87);
+            background-color: #f5f5f5;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { margin: 0; min-height: 100vh; }
+        #root { min-height: 100vh; }
+        .app-container { display: flex; flex-direction: column; min-height: 100vh; }
+        .app-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 16px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        .app-header h1 { font-size: 24px; font-weight: 600; margin: 0; }
+        .app-header .subtitle { font-size: 14px; opacity: 0.9; margin-left: 12px; }
+        .app-main { flex: 1; display: flex; padding: 16px; gap: 16px; overflow: hidden; }
+        .panel {
+            background: white; border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+        .panel-header {
+            padding: 12px 16px; border-bottom: 1px solid #f0f0f0;
+            font-weight: 600; font-size: 14px; color: #333;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-content { flex: 1; padding: 16px; overflow: auto; }
+        .left-sidebar { width: 320px; flex-shrink: 0; }
+        .center-area { flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+        .right-sidebar { width: 360px; flex-shrink: 0; }
+        .visualization-area { flex: 1; min-height: 400px; }
+        .events-panel { height: 280px; }
+        .metrics-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+        .metric-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+            border-radius: 8px; padding: 16px; text-align: center;
+        }
+        .metric-card.positive { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
+        .metric-card.negative { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); color: white; }
+        .metric-value { font-size: 28px; font-weight: 700; }
+        .metric-label { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5a6fd6; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-success { background: #38ef7d; color: #333; }
+        .btn-warning { background: #f45c43; color: white; }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+        .input-group input, .input-group textarea, .input-group select {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
+            border-radius: 6px; font-size: 14px;
+        }
+        .input-group textarea { min-height: 100px; resize: vertical; }
+        .event-item {
+            padding: 10px 12px; border-left: 3px solid #667eea;
+            background: #f9f9f9; margin-bottom: 8px; border-radius: 0 4px 4px 0;
+        }
+        .event-round { font-size: 11px; color: #999; margin-bottom: 4px; }
+        .event-description { font-size: 13px; color: #333; line-height: 1.4; }
+        .event-agents { font-size: 11px; color: #666; margin-top: 4px; }
+        .network-container { width: 100%; height: 100%; min-height: 400px; }
+        .network-container svg { width: 100%; height: 100%; }
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 200px; color: #999; text-align: center;
+        }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+        .agent-list { display: flex; flex-direction: column; gap: 8px; }
+        .agent-card {
+            padding: 12px; border: 1px solid #e8e8e8;
+            border-radius: 6px; transition: all 0.2s; cursor: pointer;
+        }
+        .agent-card:hover { border-color: #667eea; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15); }
+        .agent-card.selected { border-color: #667eea; background: #f9f9ff; }
+        .agent-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .agent-name { font-weight: 600; font-size: 14px; }
+        .agent-type { font-size: 11px; padding: 2px 6px; background: #f0f0f0; border-radius: 4px; color: #666; }
+        .agent-status { width: 8px; height: 8px; border-radius: 50%; }
+        .agent-status.active { background: #38ef7d; }
+        .agent-status.inactive { background: #999; }
+        .agent-status.intervened { background: #f45c43; }
+        .agent-sentiment { font-size: 12px; color: #666; }
+        .intervention-form {
+            padding: 12px; background: #f9f9f9;
+            border-radius: 6px; margin-top: 12px;
+        }
+        .intervention-type { display: flex; gap: 8px; margin-bottom: 12px; }
+        .intervention-type button {
+            flex: 1; padding: 8px; border: 1px solid #ddd;
+            background: white; border-radius: 6px; cursor: pointer; font-size: 12px;
+        }
+        .intervention-type button.active { border-color: #667eea; background: #667eea; color: white; }
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; z-index: 1000;
+        }
+        .loading-spinner {
+            width: 48px; height: 48px;
+            border: 4px solid #f0f0f0; border-top-color: #667eea;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { margin-top: 16px; color: #666; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        .comparison-table th, .comparison-table td {
+            padding: 8px 12px; text-align: left; border-bottom: 1px solid #f0f0f0;
+        }
+        .comparison-table th { font-weight: 600; font-size: 12px; color: #666; }
+        .comparison-table .positive { color: #38ef7d; }
+        .comparison-table .negative { color: #eb3349; }
+        .header-badge {
+            padding: 4px 12px; background: rgba(255,255,255,0.2);
+            border-radius: 12px; font-size: 13px;
+        }
+        .status-badge {
+            padding: 4px 12px; border-radius: 12px; font-size: 13px;
+        }
+        .status-badge.running { background: #38ef7d; color: #333; }
+        .status-badge.completed { background: #667eea; color: white; }
+        .status-badge.pending { background: #f7b731; color: #333; }
+        @media (max-width: 1200px) {
+            .app-main { flex-direction: column; }
+            .left-sidebar, .right-sidebar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="loading-overlay" id="loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">初始化中...</div>
+        </div>
+    </div>
+
+    <script>
+        // API Functions
+        const API_BASE = '/api';
+
+        async function checkHealth() {
+            try {
+                const res = await fetch('/api/health');
+                return res.json();
+            } catch { return { status: 'error', llm_connected: false }; }
+        }
+
+        async function createSimulation(data) {
+            const res = await fetch(`${API_BASE}/simulations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
+
+        async function getSimulation(id) {
+            const res = await fetch(`${API_BASE}/simulations/${id}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
+
+        async function stepSimulation(id, intervention) {
+            const res = await fetch(`${API_BASE}/simulations/${id}/step`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ simulation_id: id, intervention })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
+
+        async function intervene(id, intervention) {
+            const res = await fetch(`${API_BASE}/simulations/${id}/intervene`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ simulation_id: id, intervention })
+            });
+            return res.json();
+        }
+
+        async function compareScenarios(id, params) {
+            const searchParams = new URLSearchParams({ intervention_type: params.intervention_type });
+            if (params.target) searchParams.append('target', params.target);
+            if (params.parameter) searchParams.append('parameter', params.parameter);
+            if (params.value) searchParams.append('value', params.value);
+
+            const res = await fetch(`${API_BASE}/simulations/${id}/compare?${searchParams}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
+
+        // App State
+        const state = {
+            simulation: null,
+            agents: [],
+            topology: null,
+            recentEvents: [],
+            isLoading: false,
+            error: null,
+            interventionType: 'external_event',
+            selectedAgentId: null,
+            interventionValue: '',
+            comparisonResult: null
+        };
+
+        // Render Functions
+        function renderHeader() {
+            const header = document.querySelector('.app-header');
+            if (!header) return;
+
+            let statusHtml = '';
+            if (state.simulation) {
+                const statusMap = { running: ['running', '运行中'], completed: ['completed', '已完成'], paused: ['paused', '已暂停'], pending: ['pending', '待启动'] };
+                const [cls, label] = statusMap[state.simulation.status] || ['pending', '未知'];
+                statusHtml = `
+                    <span>推演: ${state.simulation.name}</span>
+                    <span class="header-badge">回合: ${state.simulation.current_round} / ${state.simulation.rounds}</span>
+                    <span class="status-badge ${cls}">${label}</span>
+                `;
+            }
+            header.innerHTML = `
+                <div style="display: flex; align-items: center;">
+                    <h1>EventSandbox</h1>
+                    <span class="subtitle">智能事件推演沙盘</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    ${statusHtml}
+                </div>
+            `;
+        }
+
+        function renderLeftSidebar() {
+            const sidebar = document.querySelector('.left-sidebar .panel-content');
+            if (!sidebar) return;
+
+            if (!state.simulation) {
+                sidebar.innerHTML = `
+                    <div class="input-group">
+                        <label>场景名称</label>
+                        <input type="text" id="scenario-name" value="奶茶涨价事件推演" placeholder="输入场景名称">
+                    </div>
+                    <div class="input-group">
+                        <label>场景描述</label>
+                        <textarea id="scenario-desc" placeholder="简要描述场景背景（可选）" rows="2"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>事件描述 *</label>
+                        <textarea id="event-text" placeholder="粘贴新闻或事件描述，例如：XX奶茶招牌产品涨价3元" rows="4"></textarea>
+                    </div>
+                    <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="handleCreate()">
+                        创建推演场景
+                    </button>
+                `;
+            } else {
+                sidebar.innerHTML = `
+                    <div style="margin-bottom: 12px;"><strong>场景:</strong> ${state.simulation.name}</div>
+                    <div style="margin-bottom: 12px;"><strong>状态:</strong> ${state.simulation.status}</div>
+                    <div style="margin-bottom: 12px;"><strong>智能体数量:</strong> ${state.simulation.agents.length}</div>
+                    <div style="margin-bottom: 12px;"><strong>当前回合:</strong> ${state.simulation.current_round} / ${state.simulation.rounds}</div>
+                    <div class="controls" style="margin-top: 16px;">
+                        <button class="btn btn-primary" style="flex: 1" onclick="handleStep()" ${state.isLoading || state.simulation.status === 'completed' ? 'disabled' : ''}>
+                            ${state.simulation.status === 'completed' ? '已完成' : '推进一回合'}
+                        </button>
+                        <button class="btn" onclick="handleReset()">重置</button>
+                    </div>
+                `;
+            }
+        }
+
+        function renderCenterPanel() {
+            const centerArea = document.querySelector('.center-area');
+            if (!centerArea) return;
+
+            if (!state.simulation) {
+                centerArea.innerHTML = `
+                    <div class="panel" style="flex: 1;">
+                        <div class="panel-header">可视化区域</div>
+                        <div class="panel-content">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🔮</div>
+                                <div>创建推演场景后即可开始可视化分析</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            centerArea.innerHTML = `
+                <div class="panel visualization-area">
+                    <div class="panel-header">
+                        <span>Agent关系网络</span>
+                        <span style="font-weight: normal; font-size: 12px; color: #999;">实时展示Agent间的互动关系</span>
+                    </div>
+                    <div class="panel-content" style="padding: 0;" id="network-container">
+                        ${renderNetwork()}
+                    </div>
+                </div>
+                ${renderMetrics()}
+                ${renderEvents()}
+            `;
+
+            // Initialize D3 network after render
+            setTimeout(() => initNetwork(), 100);
+        }
+
+        function renderNetwork() {
+            if (!state.topology || !state.topology.nodes || state.topology.nodes.length === 0) {
+                return '<div style="display: flex; align-items: center; justify-content: center; height: 400px; color: #999;">暂无网络数据</div>';
+            }
+            return '<svg id="network-svg" width="100%" height="400"></svg>';
+        }
+
+        function initNetwork() {
+            if (!state.topology || !state.topology.nodes || state.topology.nodes.length === 0) return;
+
+            const svg = d3.select('#network-svg');
+            if (svg.empty()) return;
+
+            svg.selectAll('*').remove();
+
+            const width = 800;
+            const height = 400;
+
+            const nodes = state.topology.nodes.map((n, i) => {
+                const angle = (2 * Math.PI * i) / state.topology.nodes.length;
+                return {
+                    id: n.agent_id,
+                    label: n.label,
+                    type: n.type,
+                    x: width / 2 + 150 * Math.cos(angle),
+                    y: height / 2 + 150 * Math.sin(angle)
+                };
+            });
+
+            const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+            const links = (state.topology.edges || []).map(e => {
+                const sourceNode = state.topology.nodes.find(n => n.id === e.source);
+                const targetNode = state.topology.nodes.find(n => n.id === e.target);
+                return {
+                    source: sourceNode?.agent_id || '',
+                    target: targetNode?.agent_id || '',
+                    relation: e.relation,
+                    weight: e.weight || 0.5
+                };
+            }).filter(l => l.source && l.target && nodeMap.has(l.source) && nodeMap.has(l.target));
+
+            const typeColors = {
+                company: '#667eea', competitor: '#f45c43', consumer: '#38ef7d',
+                supplier: '#f7b731', government: '#5b2c6f', regulator: '#e74c3c',
+                organization: '#3498db', individual: '#95a5a6'
+            };
+
+            const relColors = {
+                competitor: '#f45c43', cooperative: '#38ef7d', supply: '#f7b731',
+                demand: '#3498db', regulate: '#e74c3c', influence: '#9b59b6', neutral: '#bdc3c7'
+            };
+
+            const simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.id).distance(120))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(40));
+
+            const container = svg.append('g');
+
+            const link = container.append('g')
+                .selectAll('line')
+                .data(links)
+                .join('line')
+                .attr('stroke', d => relColors[d.relation] || '#bdc3c7')
+                .attr('stroke-opacity', 0.6)
+                .attr('stroke-width', d => Math.max(1, d.weight * 3));
+
+            const node = container.append('g')
+                .selectAll('g')
+                .data(nodes)
+                .join('g')
+                .style('cursor', 'pointer');
+
+            node.append('circle')
+                .attr('r', 24)
+                .attr('fill', d => typeColors[d.type] || '#95a5a6')
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 2);
+
+            node.append('text')
+                .text(d => d.label.substring(0, 8))
+                .attr('text-anchor', 'middle')
+                .attr('dy', 40)
+                .attr('font-size', '11px')
+                .attr('fill', '#333');
+
+            node.append('text')
+                .text(d => (d.type || 'a').charAt(0).toUpperCase())
+                .attr('text-anchor', 'middle')
+                .attr('dy', 5)
+                .attr('font-size', '14px')
+                .attr('font-weight', 'bold')
+                .attr('fill', '#fff');
+
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+
+            // Legend
+            const legend = svg.append('g').attr('transform', `translate(${width - 100}, 10)`);
+            Object.entries(typeColors).slice(0, 5).forEach(([type, color], i) => {
+                const g = legend.append('g').attr('transform', `translate(0, ${i * 20})`);
+                g.append('circle').attr('r', 6).attr('fill', color);
+                g.append('text').text(type).attr('x', 12).attr('y', 4).attr('font-size', '10px').attr('fill', '#666');
+            });
+        }
+
+        function renderMetrics() {
+            const metrics = state.simulation?.metrics || {};
+            const cards = [
+                { label: '整体情绪', value: metrics.overall_sentiment || 0, fmt: v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%', cls: v => v >= 0 ? 'positive' : 'negative' },
+                { label: '市场活跃度', value: metrics.market_activity || 0, fmt: v => (v * 100).toFixed(1) + '%', cls: () => '' },
+                { label: '合作水平', value: metrics.cooperation_level || 0, fmt: v => (v * 100).toFixed(1) + '%', cls: () => 'positive' },
+                { label: '冲突程度', value: metrics.conflict_level || 0, fmt: v => (v * 100).toFixed(1) + '%', cls: v => v > 0.5 ? 'negative' : '' }
+            ];
+
+            return `
+                <div class="panel">
+                    <div class="panel-header">
+                        <span>指标仪表盘</span>
+                        <span style="font-weight: normal; font-size: 12px; color: #999;">实时监控推演指标变化</span>
+                    </div>
+                    <div class="panel-content">
+                        <div class="metrics-dashboard">
+                            ${cards.map(c => `
+                                <div class="metric-card ${c.cls(c.value)}">
+                                    <div class="metric-value">${c.fmt(c.value)}</div>
+                                    <div class="metric-label">${c.label}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderEvents() {
+            const typeLabels = { action: '行动', reaction: '反应', external: '外部', intervention: '干预', system: '系统' };
+            const typeColors = { action: '#667eea', reaction: '#38ef7d', external: '#f7b731', intervention: '#f45c43', system: '#95a5a6' };
+
+            const events = state.simulation?.events || [];
+            const recentEvents = events.slice(-10).reverse();
+
+            if (recentEvents.length === 0) {
+                return `
+                    <div class="panel events-panel">
+                        <div class="panel-header">事件时间轴</div>
+                        <div class="panel-content">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📋</div>
+                                <div>暂无事件记录</div>
+                                <div style="font-size: 12px; margin-top: 4px;">点击"推进一回合"开始推演</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="panel events-panel">
+                    <div class="panel-header">
+                        <span>事件时间轴</span>
+                        <span style="font-weight: normal; font-size: 12px; color: #999;">共 ${events.length} 个事件</span>
+                    </div>
+                    <div class="panel-content" style="max-height: 220px; overflow-y: auto;">
+                        ${recentEvents.map((ev, idx) => `
+                            <div class="event-item" style="border-left-color: ${typeColors[ev.type] || '#667eea'}">
+                                <div class="event-round">
+                                    <span style="display: inline-block; padding: 1px 6px; background: ${typeColors[ev.type] || '#667eea'}; color: white; border-radius: 4px; font-size: 10px; margin-right: 8px;">
+                                        ${typeLabels[ev.type] || ev.type}
+                                    </span>
+                                    第 ${ev.round} 回合
+                                    ${idx === 0 ? '<span style="color: #667eea; margin-left: 8px;">NEW</span>' : ''}
+                                </div>
+                                <div class="event-description">${ev.description}</div>
+                                ${ev.involved_agents?.length ? `<div class="event-agents">涉及: ${ev.involved_agents.length} 个主体</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderRightSidebar() {
+            const sidebar = document.querySelector('.right-sidebar .panel-content');
+            if (!sidebar) return;
+
+            if (!state.simulation) {
+                sidebar.innerHTML = `
+                    <div class="empty-state">
+                        <div>创建推演场景后即可管理Agent和干预</div>
+                    </div>
+                `;
+                return;
+            }
+
+            const agents = state.simulation.agents || [];
+            const typeLabels = { company: '企业', competitor: '竞品', consumer: '消费者', supplier: '供应商', government: '政府', regulator: '监管', organization: '组织', individual: '个人' };
+
+            let comparisonHtml = '';
+            if (state.comparisonResult) {
+                comparisonHtml = `
+                    <div>
+                        <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">对比分析报告</h4>
+                        <table class="comparison-table">
+                            <thead><tr><th>指标</th><th>无干预</th><th>有干预</th><th>变化</th></tr></thead>
+                            <tbody>
+                                ${(state.comparisonResult.comparison || []).map(item => `
+                                    <tr>
+                                        <td>${item.metric}</td>
+                                        <td>${item.difference < 0 ?
+                                            (state.comparisonResult.without_intervention?.[item.metric]?.toFixed(3) || '-') :
+                                            (state.comparisonResult.with_intervention?.[item.metric]?.toFixed(3) || '-')}</td>
+                                        <td>${item.difference >= 0 ?
+                                            (state.comparisonResult.with_intervention?.[item.metric]?.toFixed(3) || '-') :
+                                            (state.comparisonResult.without_intervention?.[item.metric]?.toFixed(3) || '-')}</td>
+                                        <td class="${item.difference >= 0 ? 'positive' : 'negative'}">
+                                            ${item.difference >= 0 ? '+' : ''}${(item.percentage_change || 0).toFixed(1)}%
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            sidebar.innerHTML = `
+                <div>
+                    <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">智能体列表 (${agents.length})</h4>
+                    <div class="agent-list" style="max-height: 200px; overflow-y: auto;">
+                        ${agents.map(agent => {
+                            const sentimentBelief = agent.beliefs?.find(b => b.key === 'sentiment');
+                            const sentiment = sentimentBelief ? Number(sentimentBelief.value) : 0;
+                            const isSelected = state.selectedAgentId === agent.id;
+                            return `
+                                <div class="agent-card ${isSelected ? 'selected' : ''}" onclick="selectAgent('${agent.id}')">
+                                    <div class="agent-card-header">
+                                        <span class="agent-name">${agent.name}</span>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span class="agent-type">${typeLabels[agent.type] || agent.type}</span>
+                                            <span class="agent-status ${agent.status}"></span>
+                                        </div>
+                                    </div>
+                                    <div class="agent-sentiment">情绪: ${sentiment >= 0 ? '+' : ''}${(sentiment * 100).toFixed(1)}%</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <div class="intervention-form">
+                    <h4 style="font-size: 13px; color: #666; margin-bottom: 8px;">干预控制</h4>
+
+                    <div class="intervention-type">
+                        <button class="${state.interventionType === 'global_param' ? 'active' : ''}" onclick="setInterventionType('global_param')">全局参数</button>
+                        <button class="${state.interventionType === 'agent_state' ? 'active' : ''}" onclick="setInterventionType('agent_state')">Agent状态</button>
+                        <button class="${state.interventionType === 'external_event' ? 'active' : ''}" onclick="setInterventionType('external_event')">外部事件</button>
+                    </div>
+
+                    ${state.interventionType === 'agent_state' ? `
+                        <div class="input-group">
+                            <label>选择Agent</label>
+                            <select id="intervention-agent" onchange="state.selectedAgentId = this.value">
+                                <option value="">选择要干预的Agent</option>
+                                ${agents.map(a => `<option value="${a.id}" ${state.selectedAgentId === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    ` : ''}
+
+                    ${state.interventionType === 'agent_state' ? `
+                        <div class="input-group">
+                            <label>参数</label>
+                            <select id="intervention-param">
+                                <option value="sentiment">情绪值</option>
+                                <option value="belief">添加信念</option>
+                            </select>
+                        </div>
+                    ` : ''}
+
+                    <div class="input-group">
+                        <label>${state.interventionType === 'external_event' ? '事件描述' : '数值'}</label>
+                        ${state.interventionType === 'external_event' ?
+                            `<textarea id="intervention-value" rows="2" placeholder="描述要注入的外部事件"></textarea>` :
+                            `<input type="number" id="intervention-value" step="0.1" min="-1" max="1" placeholder="输入数值 (-1 到 1)">`
+                        }
+                    </div>
+
+                    <div class="controls">
+                        <button class="btn btn-primary" style="flex: 1" onclick="handleIntervene()">注入干预</button>
+                        <button class="btn" onclick="handleCompare()">对比分析</button>
+                    </div>
+                </div>
+
+                ${comparisonHtml}
+            `;
+        }
+
+        function render() {
+            renderHeader();
+            renderLeftSidebar();
+            renderCenterPanel();
+            renderRightSidebar();
+        }
+
+        // Event Handlers
+        async function handleCreate() {
+            const name = document.getElementById('scenario-name')?.value || '新推演';
+            const desc = document.getElementById('scenario-desc')?.value || '';
+            const eventText = document.getElementById('event-text')?.value || '';
+
+            if (!eventText.trim()) {
+                alert('请输入事件描述');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const data = await createSimulation({ name, description: desc, event_text: eventText });
+                state.simulation = data.simulation;
+                state.agents = data.generated_agents;
+                state.topology = data.topology;
+                state.recentEvents = [];
+                render();
+            } catch (e) {
+                state.error = e.message;
+                alert('创建失败: ' + e.message);
+            }
+            setLoading(false);
+        }
+
+        async function handleStep() {
+            setLoading(true);
+            try {
+                const data = await stepSimulation(state.simulation.id);
+                state.simulation = data.simulation;
+                state.agents = data.simulation.agents;
+                state.recentEvents = data.simulation.events.slice(-10);
+                render();
+            } catch (e) {
+                state.error = e.message;
+                alert('推进失败: ' + e.message);
+            }
+            setLoading(false);
+        }
+
+        async function handleIntervene() {
+            const valueEl = document.getElementById('intervention-value');
+            if (!valueEl?.value && state.interventionType === 'external_event') {
+                alert('请输入事件描述');
+                return;
+            }
+
+            const intervention = {
+                id: `int_${Date.now()}`,
+                type: state.interventionType,
+                target: state.interventionType === 'agent_state' ? state.selectedAgentId : undefined,
+                parameter: state.interventionType === 'agent_state' ? document.getElementById('intervention-param')?.value : undefined,
+                value: state.interventionType === 'external_event' ? valueEl?.value : parseFloat(valueEl?.value) || valueEl?.value,
+                timestamp: Date.now(),
+                round: state.simulation.current_round
+            };
+
+            setLoading(true);
+            try {
+                const data = await stepSimulation(state.simulation.id, intervention);
+                state.simulation = data.simulation;
+                state.agents = data.simulation.agents;
+                state.recentEvents = data.simulation.events.slice(-10);
+                render();
+            } catch (e) {
+                state.error = e.message;
+                alert('干预失败: ' + e.message);
+            }
+            setLoading(false);
+        }
+
+        async function handleCompare() {
+            const valueEl = document.getElementById('intervention-value');
+            setLoading(true);
+            try {
+                const data = await compareScenarios(state.simulation.id, {
+                    intervention_type: state.interventionType,
+                    target: state.selectedAgentId,
+                    parameter: state.interventionType === 'agent_state' ? document.getElementById('intervention-param')?.value : undefined,
+                    value: valueEl?.value
+                });
+                state.comparisonResult = data;
+                render();
+            } catch (e) {
+                state.error = e.message;
+                alert('对比失败: ' + e.message);
+            }
+            setLoading(false);
+        }
+
+        function handleReset() {
+            state.simulation = null;
+            state.agents = [];
+            state.topology = null;
+            state.recentEvents = [];
+            state.comparisonResult = null;
+            state.selectedAgentId = null;
+            render();
+        }
+
+        function selectAgent(id) {
+            state.selectedAgentId = state.selectedAgentId === id ? null : id;
+            renderRightSidebar();
+        }
+
+        function setInterventionType(type) {
+            state.interventionType = type;
+            renderRightSidebar();
+        }
+
+        function setLoading(loading) {
+            state.isLoading = loading;
+            const overlay = document.getElementById('loading');
+            if (overlay) {
+                overlay.style.display = loading ? 'flex' : 'none';
+            }
+        }
+
+        // Initialize
+        async function init() {
+            const health = await checkHealth();
+            console.log('Backend health:', health);
+
+            setLoading(false);
+            render();
+
+            // Hide loading after init
+            setTimeout(() => {
+                const overlay = document.getElementById('loading');
+                if (overlay) overlay.style.display = 'none';
+            }, 500);
+        }
+
+        init();
+    </script>
+</body>
+</html>

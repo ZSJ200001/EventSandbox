@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(D:ProgramDataAnaconda3envspy310python.exe -c ' *)",
+      "Bash(/d/ProgramData/Anaconda3/envs/py310/python.exe -c ' *)",
+      "Bash(\"/d/ProgramData/Anaconda3/envs/py310/python.exe\" -m pip install python-docx -q)",
+      "Bash(\"/d/ProgramData/Anaconda3/envs/py310/python.exe\" -m pip install pymupdf -q)",
+      "Bash(\"/d/ProgramData/Anaconda3/envs/py310/python.exe\" -m pip install -e . -q)",
+      "Bash(npm install *)",
+      "Bash(curl -s -X POST http://localhost:8000/api/simulations -H 'Content-Type: application/json' --data-raw '{\"name\":\"奶茶涨价推演\",\"description\":\"测试\",\"event_text\":\"XX奶茶招牌产品涨价3元\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/api/simulations -H \"Content-Type: application/json\" -d @/tmp/test.json)"
+    ]
+  }
+}
