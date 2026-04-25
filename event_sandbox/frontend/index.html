@@ -170,6 +170,14 @@
 
     <script>
         // ==================== 配置 ====================
+        // 安全检查：确保配置已加载
+        if (!window.EVENT_SANDBOX_CONFIG) {
+            window.EVENT_SANDBOX_CONFIG = {
+                API_HOST: 'localhost',
+                API_PORT: '8010',
+                API_BASE_PATH: '/api'
+            };
+        }
         const API_BASE = `http://${window.EVENT_SANDBOX_CONFIG.API_HOST}:${window.EVENT_SANDBOX_CONFIG.API_PORT}${window.EVENT_SANDBOX_CONFIG.API_BASE_PATH}`;
         const API_HOST_URL = `http://${window.EVENT_SANDBOX_CONFIG.API_HOST}:${window.EVENT_SANDBOX_CONFIG.API_PORT}`;
 
@@ -238,7 +246,7 @@
             }
             container.innerHTML = state.toasts.map(t =>
                 `<div class="toast ${t.type}">
-                    <span>${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
+                    <span>${t.type === 'success' ? '✓' : t.type === 'error' ? '✕' : 'ℹ'}</span>
                     <span>${t.message}</span>
                 </div>`
             ).join('');
@@ -325,7 +333,7 @@
                             </div>
                             <div class="form-group">
                                 <label>事件描述（必填）</label>
-                                <textarea class="form-control" id="event-text" placeholder="输入事件描述，如：XX奶茶招牌产品涨价3元"></textarea>
+                                <textarea class="form-control" id="event-text">XX奶茶招牌产品涨价3元，引发市场连锁反应</textarea>
                             </div>
                             <button class="btn btn-primary btn-block" onclick="handleCreate()">
                                 创建推演场景
