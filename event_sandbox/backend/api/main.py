@@ -19,7 +19,6 @@ from models import (
     InterventionResponse,
     SimulationStateResponse,
     HealthResponse,
-    CompareReport,
     CompareScenariosRequest,
     CompareScenariosResponse,
     SimulationStateRequest,
@@ -428,7 +427,7 @@ async def compare_scenarios(simulation_id: str, request: CompareScenariosRequest
 
 
 # ============== 场景对比（旧接口，保持兼容）==============
-@app.get("/api/simulations/{simulation_id}/compare", response_model=CompareReport)
+@app.get("/api/simulations/{simulation_id}/compare", response_model=CompareScenariosResponse)
 async def compare_scenarios_simple(
     simulation_id: str,
     intervention_type: str,
@@ -457,7 +456,7 @@ async def compare_scenarios_simple(
 
     try:
         result = engine.compare_scenarios(simulation_id, intervention, steps=3)
-        return CompareReport(**result)
+        return CompareScenariosResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -621,5 +620,5 @@ async def get_agent_actions(simulation_id: str, agent_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", "8010"))
+    port = int(os.getenv("PORT", "8000"))
     uvicorn.run(app, host="0.0.0.0", port=port)

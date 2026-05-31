@@ -66,6 +66,7 @@ class SimulationEngine:
             rounds=rounds,
             current_round=0,
             status=SimulationStatus.PENDING,
+            config=config,
             metrics=SimulationMetrics(
                 overall_sentiment=0.0,
                 market_activity=0.3,
@@ -143,8 +144,9 @@ class SimulationEngine:
             })
 
         # 随机事件检查
-        if config.enable_random_events if hasattr(self, 'config') and self.config else True:
-            if random.random() < 0.1:  # 10% 概率
+        sim_config = simulation.config
+        if sim_config.enable_random_events:
+            if random.random() < sim_config.random_event_probability:
                 random_event = self._generate_random_event(simulation, current_round)
                 if random_event:
                     new_events.append(random_event)
@@ -169,7 +171,7 @@ class SimulationEngine:
 
                 # 应用行动结果
                 event, sentiment_updates = self.agent_engine.apply_action_result(
-                    agent, result, simulation.agents, current_round, self.config
+                    agent, result, simulation.agents, current_round, simulation.config
                 )
                 event.round = current_round
                 new_events.append(event)

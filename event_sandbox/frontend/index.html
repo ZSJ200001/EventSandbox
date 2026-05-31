@@ -191,7 +191,9 @@
             error: null,
             selectedAgent: null,
             interventionType: 'event',
-            toasts: []
+            toasts: [],
+            batchSteps: 5,
+            comparisonResult: null
         };
 
         // ==================== API ====================
@@ -223,6 +225,28 @@
             return api(`/simulations/${id}/step`, {
                 method: 'POST',
                 body: { simulation_id: id, intervention }
+            });
+        }
+
+        async function batchStep(id, steps) {
+            return api(`/simulations/${id}/batch-step`, {
+                method: 'POST',
+                body: { simulation_id: id, steps }
+            });
+        }
+
+        async function pauseSimulation(id) {
+            return api(`/simulations/${id}/pause`, { method: 'POST', body: { simulation_id: id } });
+        }
+
+        async function resumeSimulation(id) {
+            return api(`/simulations/${id}/resume`, { method: 'POST', body: { simulation_id: id } });
+        }
+
+        async function compareScenarios(id, intervention) {
+            return api(`/simulations/${id}/compare`, {
+                method: 'POST',
+                body: { simulation_id: id, intervention, steps: 3 }
             });
         }
 
@@ -334,6 +358,10 @@
                             <div class="form-group">
                                 <label>事件描述（必填）</label>
                                 <textarea class="form-control" id="event-text">XX奶茶招牌产品涨价3元，引发市场连锁反应</textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>推演轮数</label>
+                                <input type="number" class="form-control" id="scenario-rounds" value="10" min="1" max="100">
                             </div>
                             <button class="btn btn-primary btn-block" onclick="handleCreate()">
                                 创建推演场景
@@ -506,9 +534,31 @@
                     </div>
                 </div>
 
-                <button class="btn btn-success btn-block" onclick="handleStep()" ${state.isLoading || state.simulation.status === 'completed' ? 'disabled' : ''}>
-                    ${state.isLoading ? '<span class="spinner"></span> 推演中...' : state.simulation.status === 'completed' ? '推演已完成' : '推进一回合 →'}
-                </button>
+                <div class="panel">
+                    <div class="panel-header">
+                        <span>推演控制</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="btn-group" style="margin-bottom: 12px;">
+                            <button class="btn btn-success" onclick="handleStep()" ${state.isLoading || state.simulation.status === 'completed' || state.simulation.status === 'paused' ? 'disabled' : ''}>
+                                ${state.isLoading ? '<span class="spinner"></span>' : '推进一回合'}
+                            </button>
+                            <button class="btn btn-outline" onclick="handleBatchStep()" ${state.isLoading || state.simulation.status === 'completed' || state.simulation.status === 'paused' ? 'disabled' : ''}>
+                                批量推演
+                            </button>
+                            ${state.simulation.status === 'paused'
+                                ? `<button class="btn btn-primary" onclick="handleResume()">恢复推演</button>`
+                                : `<button class="btn btn-warning" onclick="handlePause()" ${state.simulation.status === 'completed' ? 'disabled' : ''}>暂停推演</button>`
+                            }
+                            <button class="btn btn-outline" onclick="handleCompare()">场景对比</button>
+                        </div>
+                        <div class="form-group">
+                            <label>批量推演步数</label>
+                            <input type="number" class="form-control" id="batch-steps" value="${state.batchSteps}" min="1" max="50" style="width: 100px;" onchange="state.batchSteps = Number(this.value)">
+                        </div>
+                        ${state.comparisonResult ? renderComparisonResult() : ''}
+                    </div>
+                </div>
             `;
         }
 
@@ -547,10 +597,39 @@
                                     <div class="detail-value">${agent.personality}</div>
                                 </div>
                             ` : ''}
+                            ${agent.personality_traits ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">人格模型 (Big Five)</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+                                        <div>开放性: ${(agent.personality_traits.openness * 100).toFixed(0)}%</div>
+                                        <div>尽责性: ${(agent.personality_traits.conscientiousness * 100).toFixed(0)}%</div>
+                                        <div>外向性: ${(agent.personality_traits.extraversion * 100).toFixed(0)}%</div>
+                                        <div>宜人性: ${(agent.personality_traits.agreeableness * 100).toFixed(0)}%</div>
+                                        <div>神经质: ${(agent.personality_traits.neuroticism * 100).toFixed(0)}%</div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${agent.current_strategy ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">当前策略</div>
+                                    <div class="detail-value">${agent.current_strategy}</div>
+                                </div>
+                            ` : ''}
                             ${agent.goals?.length ? `
                                 <div class="detail-section">
                                     <div class="detail-label">目标</div>
                                     <div class="detail-value">${agent.goals.join(' · ')}</div>
+                                </div>
+                            ` : ''}
+                            ${agent.memory?.short_term?.length ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">近期记忆</div>
+                                    ${agent.memory.short_term.slice(-5).reverse().map(m => `
+                                        <div class="belief-item">
+                                            <div class="belief-key">第 ${m.round} 回合 · ${m.type}</div>
+                                            <div class="belief-value">${m.content}</div>
+                                        </div>
+                                    `).join('')}
                                 </div>
                             ` : ''}
                             ${agent.beliefs?.length ? `
@@ -622,10 +701,14 @@
             // Create nodes
             const nodes = state.topology.nodes.map((n, i) => {
                 const angle = (2 * Math.PI * i) / state.topology.nodes.length;
+                const agent = state.agents.find(a => a.id === n.agent_id);
+                const sentimentBelief = agent?.beliefs?.find(b => b.key === 'sentiment');
+                const sentiment = sentimentBelief ? Number(sentimentBelief.value) : 0;
                 return {
                     id: n.agent_id,
                     label: n.label,
                     type: n.type,
+                    sentiment: sentiment,
                     x: width / 2 + 150 * Math.cos(angle),
                     y: height / 2 + 150 * Math.sin(angle)
                 };
@@ -686,7 +769,9 @@
 
             node.append('circle')
                 .attr('r', 24)
-                .attr('fill', d => AGENT_TYPE_COLORS[d.type] || '#95a5a6');
+                .attr('fill', d => AGENT_TYPE_COLORS[d.type] || '#95a5a6')
+                .attr('stroke', d => d.sentiment > 0.3 ? '#38ef7d' : d.sentiment < -0.3 ? '#f45c43' : '#f7b731')
+                .attr('stroke-width', 3);
 
             node.append('text')
                 .text(d => d.label.substring(0, 6))
@@ -710,6 +795,16 @@
                 legend.append('div')
                     .attr('class', 'legend-item')
                     .html(`<div class="legend-dot" style="background: ${color}"></div><span>${type}</span>`);
+            });
+            // 情绪图例
+            [
+                { label: '积极', color: '#38ef7d' },
+                { label: '中性', color: '#f7b731' },
+                { label: '消极', color: '#f45c43' }
+            ].forEach(item => {
+                legend.append('div')
+                    .attr('class', 'legend-item')
+                    .html(`<div class="legend-dot" style="background: ${item.color}"></div><span>${item.label}</span>`);
             });
 
             // Simulation
@@ -755,6 +850,7 @@
         async function handleCreate() {
             const name = document.getElementById('scenario-name')?.value || '新推演';
             const eventText = document.getElementById('event-text')?.value?.trim();
+            const rounds = parseInt(document.getElementById('scenario-rounds')?.value, 10) || 10;
 
             if (!eventText) {
                 showToast('请输入事件描述', 'error');
@@ -765,7 +861,7 @@
             render();
 
             try {
-                const data = await createSimulation({ name, event_text: eventText });
+                const data = await createSimulation({ name, event_text: eventText, rounds });
                 state.simulation = data.simulation;
                 state.agents = data.generated_agents;
                 state.topology = data.topology;
@@ -792,6 +888,100 @@
 
             state.isLoading = false;
             render();
+        }
+
+        async function handleBatchStep() {
+            state.isLoading = true;
+            render();
+            try {
+                const data = await batchStep(state.simulation.id, state.batchSteps);
+                state.simulation = data.simulation;
+                state.agents = data.simulation.agents;
+                showToast(`批量推演完成，执行了 ${data.steps_executed} 步`, 'success');
+            } catch (e) {
+                showToast('批量推演失败: ' + e.message, 'error');
+            }
+            state.isLoading = false;
+            render();
+        }
+
+        async function handlePause() {
+            try {
+                await pauseSimulation(state.simulation.id);
+                state.simulation.status = 'paused';
+                showToast('推演已暂停', 'info');
+                render();
+            } catch (e) {
+                showToast('暂停失败: ' + e.message, 'error');
+            }
+        }
+
+        async function handleResume() {
+            try {
+                await resumeSimulation(state.simulation.id);
+                state.simulation.status = 'running';
+                showToast('推演已恢复', 'success');
+                render();
+            } catch (e) {
+                showToast('恢复失败: ' + e.message, 'error');
+            }
+        }
+
+        async function handleCompare() {
+            const valueEl = document.getElementById('intervention-value');
+            const text = valueEl?.value?.trim() || '监管部门约谈企业负责人';
+            state.isLoading = true;
+            render();
+            try {
+                const intervention = {
+                    id: `compare_${Date.now()}`,
+                    type: 'external_event',
+                    value: text,
+                    timestamp: Date.now(),
+                    round: state.simulation.current_round
+                };
+                const data = await compareScenarios(state.simulation.id, intervention);
+                state.comparisonResult = data;
+                showToast('场景对比完成', 'success');
+            } catch (e) {
+                showToast('对比失败: ' + e.message, 'error');
+            }
+            state.isLoading = false;
+            render();
+        }
+
+        function renderComparisonResult() {
+            const r = state.comparisonResult;
+            if (!r) return '';
+            const baseline = r.baseline_metrics || {};
+            const withInt = r.with_intervention_metrics || {};
+            const deltas = r.metric_deltas || {};
+            const format = (v) => (v !== undefined ? (v * 100).toFixed(1) + '%' : '-');
+            return `
+                <div style="margin-top: 12px; padding: 12px; background: #f9f9ff; border-radius: 8px;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">对比分析结果</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 12px;">
+                        <div><strong>指标</strong></div>
+                        <div><strong>基线</strong></div>
+                        <div><strong>干预后</strong></div>
+                        <div>整体情绪</div>
+                        <div>${format(baseline.overall_sentiment)}</div>
+                        <div>${format(withInt.overall_sentiment)} (${(deltas.overall_sentiment > 0 ? '+' : '') + (deltas.overall_sentiment * 100).toFixed(1)}%)</div>
+                        <div>合作水平</div>
+                        <div>${format(baseline.cooperation_level)}</div>
+                        <div>${format(withInt.cooperation_level)} (${(deltas.cooperation_level > 0 ? '+' : '') + (deltas.cooperation_level * 100).toFixed(1)}%)</div>
+                        <div>冲突程度</div>
+                        <div>${format(baseline.conflict_level)}</div>
+                        <div>${format(withInt.conflict_level)} (${(deltas.conflict_level > 0 ? '+' : '') + (deltas.conflict_level * 100).toFixed(1)}%)</div>
+                    </div>
+                    ${r.key_insights?.length ? `
+                        <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                            <strong>关键洞察：</strong>${r.key_insights.join('；')}
+                        </div>
+                    ` : ''}
+                    <button class="btn btn-sm btn-outline" style="margin-top: 8px;" onclick="state.comparisonResult = null; render();">关闭对比</button>
+                </div>
+            `;
         }
 
         async function handleIntervene() {
@@ -837,6 +1027,7 @@
                 const data = await stepSimulation(state.simulation.id, intervention);
                 state.simulation = data.simulation;
                 state.agents = data.simulation.agents;
+                if (valueEl) valueEl.value = '';
                 showToast('干预已注入', 'success');
             } catch (e) {
                 showToast('干预失败: ' + e.message, 'error');
@@ -846,11 +1037,19 @@
             render();
         }
 
-        function handleReset() {
+        async function handleReset() {
+            if (state.simulation) {
+                try {
+                    await api(`/simulations/${state.simulation.id}`, { method: 'DELETE' });
+                } catch (e) {
+                    // 忽略删除失败
+                }
+            }
             state.simulation = null;
             state.agents = [];
             state.topology = null;
             state.selectedAgent = null;
+            state.comparisonResult = null;
             render();
             showToast('已重置', 'info');
         }

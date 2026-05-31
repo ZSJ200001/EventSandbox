@@ -379,6 +379,9 @@ class Simulation(BaseModel):
     # 干预历史
     interventions: list[dict] = Field(default_factory=list)
 
+    # 配置
+    config: SimulationConfig = Field(default_factory=SimulationConfig)
+
     # 关键节点标记
     critical_nodes: list[int] = Field(default_factory=list)  # 关键事件发生的回合
 

@@ -89,10 +89,16 @@ docker-compose up -d
 |------|------|------|
 | `/health` | GET | 健康检查 |
 | `/api/simulations` | POST | 创建新推演 |
+| `/api/simulations` | GET | 列出推演 |
 | `/api/simulations/{id}` | GET | 获取推演状态 |
 | `/api/simulations/{id}/step` | POST | 执行一步推演 |
+| `/api/simulations/{id}/batch-step` | POST | 批量执行多步 |
 | `/api/simulations/{id}/intervene` | POST | 注入干预 |
-| `/api/simulations/{id}/compare` | GET | 场景对比分析 |
+| `/api/simulations/{id}/compare` | POST | 场景对比分析（推荐） |
+| `/api/simulations/{id}/compare` | GET | 场景对比分析（旧版兼容） |
+| `/api/simulations/{id}/pause` | POST | 暂停推演 |
+| `/api/simulations/{id}/resume` | POST | 恢复推演 |
+| `/api/interventions/options` | GET | 获取快速干预选项 |
 
 完整API文档: `http://localhost:8000/docs`
 
