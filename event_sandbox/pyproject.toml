@@ -7,8 +7,16 @@ dependencies = [
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
     "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
     "httpx>=0.26.0",
     "networkx>=3.2.0",
+    "json-repair>=0.10.0",
+    "requests>=2.32.5",
+    "python-dateutil>=2.9.0",
+    "protobuf>=7.34.1",
+    "avro>=1.12.1",
+    "pycryptodome>=3.23.0",
+    "hybaseapi",
 ]
 
 [project.optional-dependencies]
@@ -30,3 +38,15 @@ target-version = ['py310']
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.uv.sources]
+hybaseapi = { path = "./hybaseapi-0.1-py3-none-any.whl" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+]
