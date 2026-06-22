@@ -12,6 +12,7 @@ from schemas.responses import (
     StepSimulationResponse,
     SimulationStateResponse,
     BatchStepResponse,
+    BatchStepStatusResponse,
     ListSimulationsResponse,
     SimulationSummary,
     DeleteSimulationResponse,
@@ -183,21 +184,52 @@ async def batch_step(
     request: BatchStepRequest,
     service: SimulationService = Depends(get_simulation_service),
 ):
-    """批量执行"""
+    """启动批量推演异步任务"""
     logger.info("[API] POST /api/simulations/%s/batch-step, steps=%d", simulation_id, request.steps)
     try:
-        result = await service.batch_step(
+        task = await service.batch_step(
             simulation_id=simulation_id,
             steps=request.steps,
             stop_on_condition=request.stop_on_condition,
             conflict_threshold=request.conflict_threshold,
         )
         return BatchStepResponse(
-            simulation=result["simulation"],
-            steps_executed=result["steps_executed"],
-            events_generated=result["events_generated"],
-            final_metrics=result["final_metrics"],
-            stop_reason=result["stop_reason"],
+            task_id=task["task_id"],
+            simulation_id=task["simulation_id"],
+            status=task["status"],
+            steps_requested=task["steps_requested"],
+            steps_executed=task["steps_executed"],
+            events_generated=task["events_generated"],
+            current_round=task["current_round"],
+            stop_reason=task["stop_reason"],
+            error=task["error"],
+        )
+    except Exception as e:
+        _handle_error(e)
+
+
+@router.get("/{simulation_id}/batch-status/{task_id}", response_model=BatchStepStatusResponse)
+async def get_batch_status(
+    simulation_id: str,
+    task_id: str,
+    service: SimulationService = Depends(get_simulation_service),
+):
+    """查询批量推演任务状态"""
+    logger.info("[API] GET /api/simulations/%s/batch-status/%s", simulation_id, task_id)
+    try:
+        task = await service.get_batch_status(simulation_id, task_id)
+        return BatchStepStatusResponse(
+            task_id=task["task_id"],
+            simulation_id=task["simulation_id"],
+            status=task["status"],
+            steps_requested=task["steps_requested"],
+            steps_executed=task["steps_executed"],
+            events_generated=task["events_generated"],
+            current_round=task["current_round"],
+            stop_reason=task["stop_reason"],
+            error=task["error"],
+            created_at=task["created_at"],
+            updated_at=task["updated_at"],
         )
     except Exception as e:
         _handle_error(e)

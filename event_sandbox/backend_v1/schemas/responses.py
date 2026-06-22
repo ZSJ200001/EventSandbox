@@ -63,11 +63,29 @@ class SimulationStateResponse(BaseResponse):
 
 
 class BatchStepResponse(BaseResponse):
-    simulation: Simulation
+    task_id: str
+    simulation_id: str
+    status: str = "pending"
+    steps_requested: int = 0
     steps_executed: int = 0
-    events_generated: list[Event] = Field(default_factory=list)
-    final_metrics: SimulationMetrics
+    events_generated: int = 0
+    current_round: int = 0
     stop_reason: str = ""
+    error: str = ""
+
+
+class BatchStepStatusResponse(BaseResponse):
+    task_id: str
+    simulation_id: str
+    status: str = "pending"
+    steps_requested: int = 0
+    steps_executed: int = 0
+    events_generated: int = 0
+    current_round: int = 0
+    stop_reason: str = ""
+    error: str = ""
+    created_at: float = 0
+    updated_at: float = 0
 
 
 class SimulationSummary(BaseModel):
