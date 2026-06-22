@@ -1,0 +1,17 @@
+/adhoc_tests/
+/mirofish/
+/.claude/
+/tests/
+
+# 运行时数据与日志
+event_sandbox/backend_v1/data/simulations/
+event_sandbox/logs/
+
+# 前端构建产物与依赖
+event_sandbox/frontend_v1/node_modules/
+event_sandbox/frontend_v1/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
