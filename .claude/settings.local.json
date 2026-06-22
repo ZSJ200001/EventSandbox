@@ -9,7 +9,8 @@
       "Bash(npm install *)",
       "Bash(curl -s -X POST http://localhost:8000/api/simulations -H 'Content-Type: application/json' --data-raw '{\"name\":\"奶茶涨价推演\",\"description\":\"测试\",\"event_text\":\"XX奶茶招牌产品涨价3元\"}')",
       "Bash(curl -s -X POST http://localhost:8000/api/simulations -H \"Content-Type: application/json\" -d @/tmp/test.json)",
-      "Bash(python -c \"import api.main; print\\('Import OK'\\)\")"
+      "Bash(python -c \"import api.main; print\\('Import OK'\\)\")",
+      "Bash(curl -s -X POST http://localhost:8000/api/simulations -H \"Content-Type: application/json\" -d '{\"name\":\"测试推演\",\"event_text\":\"中美在半导体领域展开激烈竞争，美国对中国实施芯片出口禁令，中国加大自主研发投入。华为、中芯国际、台积电、英特尔、高通等企业和中国政府、美国商务部等政府机构参与其中。\",\"rounds\":3}' -w \"\\\\nHTTP_CODE:%{http_code}\" --max-time 90)"
     ]
   }
 }
