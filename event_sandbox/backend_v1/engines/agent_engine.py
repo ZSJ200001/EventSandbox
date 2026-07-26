@@ -13,7 +13,6 @@ from core.domain.agent import Agent, MemoryEntry
 from core.domain.event import Event
 from core.domain.relation import RelationEdge
 from core.domain.simulation import Simulation, TimelineEntry
-from core.domain.world_model import WorldEvent
 from infrastructure.llm.client import AsyncLLMClient
 from infrastructure.llm.schemas import AgentDecisionOutput
 
@@ -122,7 +121,6 @@ class AgentEngine:
         environment_state: Optional[dict] = None,
         main_line_pressure: str = "",
         time_context: Optional[dict] = None,
-        world_state_context: Optional[str] = None,
         event_types: Optional[list[str]] = None,
     ) -> AgentDecisionOutput:
         """决定 Agent 在当前回合的行动。LLM 失败时返回默认观望行为。"""
@@ -194,7 +192,6 @@ class AgentEngine:
                 is_forced_response=is_forced_response,
                 all_agents=[{"id": a.id, "name": a.name, "type": a.type.value if hasattr(a.type, "value") else str(a.type)} for a in all_agents],
                 time_context=time_context if time_context is not None else None,
-                world_state_context=world_state_context or "",
                 event_types=event_types or [],
             )
 
@@ -213,7 +210,6 @@ class AgentEngine:
                         action=decision.action,
                         context=f"第 {current_round} 回合 | {agent.name} 采取行动",
                         target_agents=decision.target_agents,
-                        action_intensity=decision.action_intensity,
                     )
                 except Exception as e:
                     logger.warning("[AgentEngine] 生成 action_description 失败: %s, 使用兜底", e)
@@ -231,7 +227,6 @@ class AgentEngine:
                 sentiment_change=0,
                 target_agents=[],
                 action_description=f"{agent.name} 因系统原因选择观望。",
-                self_log=f"第{current_round}回合：系统异常，选择观望。",
             )
 
     def apply_action_result(
@@ -259,7 +254,7 @@ class AgentEngine:
             importance=0.7,
         ))
 
-        log_content = result.self_log or result.action_description or result.action
+        log_content = result.action_description or result.action
         agent.event_log.append({
             "round": current_round,
             "type": "action",
@@ -278,9 +273,9 @@ class AgentEngine:
                 resolved = next((a for a in all_agents if a.name == id_or_name), None)
             return resolved
 
-        # 处理 relation_updates，同时收集 before/after
+        # 处理 relation_changes，同时收集 before/after
         relation_changes = []
-        for ru in result.relation_updates:
+        for ru in result.relation_changes:
             action = ru.get("action", "")
             relation_id = ru.get("relation_id", "")
             source_id_or_name = ru.get("source_id", "")
@@ -290,20 +285,20 @@ class AgentEngine:
             # 解析 source，必须等于当前 Agent
             source = _resolve_agent(source_id_or_name) if source_id_or_name else agent
             if not source or source.id != agent.id:
-                logger.warning("[AgentEngine] relation_update source_id 不是当前 Agent 或无法解析，跳过: %s", source_id_or_name)
+                logger.warning("[AgentEngine] relation_change source_id 不是当前 Agent 或无法解析，跳过: %s", source_id_or_name)
                 continue
 
             # 解析 target
             target = _resolve_agent(target_id_or_name)
             if not target:
-                logger.warning("[AgentEngine] relation_update 目标未找到: %s", target_id_or_name)
+                logger.warning("[AgentEngine] relation_change 目标未找到: %s", target_id_or_name)
                 continue
 
             if target.id == source.id:
-                logger.debug("[AgentEngine] relation_update 目标不能是自己，跳过")
+                logger.debug("[AgentEngine] relation_change 目标不能是自己，跳过")
                 continue
 
-            # 查找旧关系
+            # 查找旧关系：优先 relation_id，其次 (source, target, relation)，最后 (source, target) 最近交互
             rel = None
             if action == "update" and relation_id:
                 rel = simulation.get_relation_by_id(relation_id)
@@ -314,11 +309,21 @@ class AgentEngine:
             if not rel and relation_label:
                 rel = simulation.find_relation(source.id, target.id, relation_label)
 
+            # fallback：LLM 常常未提供 relation_id，或在关系标签变化时误用 create
+            # 若 source→target 已存在任何关系，优先更新最近交互的一条，避免同一对实体之间堆积多条重复关系
+            if not rel:
+                candidates = [
+                    r for r in simulation.relations
+                    if r.source_id == source.id and r.target_id == target.id
+                ]
+                if candidates:
+                    rel = max(candidates, key=lambda r: (r.last_interaction_round, r.interaction_count))
+
             old_relation = ""
             old_polarity = ""
 
             if rel:
-                # 更新已有关系
+                # 更新已有关系（允许关系标签变化）
                 old_relation = rel.relation
                 old_polarity = rel.polarity
                 rel.evolution_history.append({
@@ -381,53 +386,13 @@ class AgentEngine:
                 "reasoning": result.reasoning,
                 "sentiment_change": result.sentiment_change,
                 "target_agents": result.target_agents,
-                "relation_updates": result.relation_updates,
                 "relation_changes": relation_changes,
-                "world_state_updates": result.world_state_updates,
-                "events": result.events,
             },
         ))
 
         if result.action == "观望/不行动":
             logger.info("[AgentEngine] apply_action_result 完成, agent=%s 观望无更新", agent.name)
             return []
-
-        # 环境变化
-        if result.environment_changes:
-            for key, value in result.environment_changes.items():
-                simulation.environment_state[key] = value
-            logger.debug("[AgentEngine] 环境变化: %s", result.environment_changes)
-
-        # 世界状态变化（方案 C）
-        if result.world_state_updates:
-            simulation.update_world_state(result.world_state_updates)
-            logger.debug("[AgentEngine] 世界状态变化: %s", result.world_state_updates)
-
-        # 离散事件（方案 C）
-        if result.events:
-            for evt in result.events:
-                world_event = WorldEvent(
-                    type=evt.get("type", "other"),
-                    round=current_round,
-                    actor=agent.name,
-                    description=evt.get("description", ""),
-                    metadata=evt.get("metadata", {}),
-                )
-                simulation.add_world_event(world_event)
-                # 同时记录到 timeline，便于前端时间轴展示
-                simulation.timeline.append(TimelineEntry(
-                    round=current_round,
-                    type="world_event",
-                    actor=agent.name,
-                    action=world_event.type,
-                    description=world_event.description,
-                    details={
-                        "event_type": world_event.type,
-                        "metadata": world_event.metadata,
-                        "world_state_updates": result.world_state_updates,
-                    },
-                ))
-            logger.debug("[AgentEngine] 离散事件: %s", result.events)
 
         sentiment_updates: list[tuple[Agent, float]] = []
 

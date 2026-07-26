@@ -20,7 +20,7 @@ from core.domain.common import SimulationStatus, EventType, InterventionType, Ag
 from core.domain.agent import Agent
 from core.domain.event import Event, EventImpact
 from core.domain.relation import RelationEdge
-from core.domain.simulation import Simulation, SimulationConfig, SimulationMetrics, Topology, TopologyNode, TopologyEdge, TimelineEntry, RoundSummary
+from core.domain.simulation import Simulation, SimulationConfig, SimulationMetrics, Topology, TopologyNode, TopologyEdge, TimelineEntry, RoundSummary, format_simulated_time
 from core.exceptions import SimulationNotFoundError, StepLockedError, SimulationCompletedError, SimulationPausedError, EventParseError, ValidationError
 from infrastructure.llm.client import AsyncLLMClient
 from infrastructure.llm.schemas import EntityExtractionOutput, EntityAttributesOutput, RelationshipExtractionOutput
@@ -226,10 +226,22 @@ class SimulationEngine:
                 {"name": a.name, "type": str(a.type), "description": a.description}
                 for a in agents
             ]
+            # 构造第 0 回合的时间上下文，供世界模型生成时对齐时间
+            time_context = None
+            if config.has_time_semantics:
+                time_context = {
+                    "current_round": 0,
+                    "total_rounds": rounds,
+                    "current_simulated_time": format_simulated_time(config.get_current_simulated_time(0)),
+                    "start_datetime": format_simulated_time(config.start_datetime),
+                    "round_duration": config.duration_label,
+                    "has_time_semantics": True,
+                }
             world_model = await self.llm.extract_world_model(
                 event_text=event_text,
                 entities_info=entities_info,
                 main_line=config.main_line or "",
+                time_context=time_context,
             )
             logger.info(
                 "[SimulationEngine] 世界模型提取完成, type=%s, state_fields=%d, event_types=%d",
@@ -448,9 +460,7 @@ class SimulationEngine:
                         "target_agents": [],
                         "action_description": f"{agent.name} 因异常选择观望。",
                         "sentiment_change": 0,
-                        "relation_updates": [],
-                        "self_log": f"第{current_round}回合：异常，观望。",
-                        "environment_changes": {},
+                        "relation_changes": [],
                     })
                     updated_agents.append(agent)
                     continue
@@ -470,13 +480,30 @@ class SimulationEngine:
                     "target_agents": result.target_agents,
                     "action_description": result.action_description,
                     "sentiment_change": result.sentiment_change,
-                    "action_intensity": result.action_intensity,
-                    "risk_level": result.risk_level,
-                    "relation_updates": result.relation_updates,
-                    "self_log": result.self_log,
-                    "environment_changes": result.environment_changes,
+                    "relation_changes": result.relation_changes,
                 })
                 updated_agents.append(agent)
+
+            # 汇总本回合所有 Agent 行动，统一推导世界状态变化
+            try:
+                round_relation_changes = []
+                for entry in simulation.timeline:
+                    if entry.round == current_round and entry.type == "agent_action":
+                        round_relation_changes.extend(entry.details.get("relation_changes", []))
+
+                world_state_output = await self.llm.aggregate_world_state_updates(
+                    current_world_state=simulation.world_state,
+                    world_state_schema=simulation.world_model.world_state_schema if simulation.world_model else {},
+                    round_actions=action_results,
+                    relation_changes=round_relation_changes,
+                    current_round=current_round,
+                    time_context=simulation.get_time_context(),
+                )
+                if world_state_output.world_state_updates:
+                    simulation.update_world_state(world_state_output.world_state_updates)
+                    logger.info("[SimulationEngine] 世界状态更新: %s", world_state_output.world_state_updates)
+            except Exception as e:
+                logger.error("[SimulationEngine] 世界状态汇总失败: %s", e, exc_info=True)
 
             # 同步拓扑与指标
             try:
@@ -540,7 +567,7 @@ class SimulationEngine:
                         has_polarity_shift = True
                 if has_polarity_shift:
                     level = "S"
-                elif details.get("relation_updates"):
+                elif details.get("relation_changes"):
                     level = "A"
                 elif abs(details.get("sentiment_change", 0)) > 0.3:
                     level = "A"
@@ -786,7 +813,6 @@ class SimulationEngine:
             environment_state=simulation.environment_state,
             main_line_pressure=main_line_pressure,
             time_context=simulation.get_time_context(),
-            world_state_context=simulation.get_world_state_context(),
             event_types=simulation.world_model.event_types if simulation.world_model else [],
         )
 

@@ -45,11 +45,12 @@ class ReportEngine:
     def _resolve_target_from_action(self, entry) -> str:
         """从 agent_action 条目中解析目标名称/ID"""
         details = entry.details or {}
-        relation_updates = details.get("relation_updates", []) or []
-        if relation_updates and isinstance(relation_updates, list):
-            target_id = relation_updates[0].get("target_id", "")
-            if target_id:
-                return target_id
+        relation_changes = details.get("relation_changes", []) or []
+        if relation_changes and isinstance(relation_changes, list):
+            rc = relation_changes[0]
+            target = rc.get("target_name") or rc.get("target_id", "")
+            if target:
+                return target
         target_agents = details.get("target_agents", []) or []
         if target_agents:
             return target_agents[0]
@@ -63,16 +64,16 @@ class ReportEngine:
                 continue
             details = entry.details or {}
             action = entry.action or "观望/不行动"
-            relation_updates = details.get("relation_updates", []) or []
+            relation_changes = details.get("relation_changes", []) or []
             target_agents = details.get("target_agents", []) or []
             # 跳过无外部影响的观望行动
-            if action in ("观望", "不行动", "观望/不行动") and not relation_updates and not target_agents:
+            if action in ("观望", "不行动", "观望/不行动") and not relation_changes and not target_agents:
                 continue
             records.append({
                 "round": entry.round,
                 "action": action,
                 "targets": target_agents,
-                "relation_updates": relation_updates,
+                "relation_changes": relation_changes,
             })
         return records
 
@@ -88,21 +89,49 @@ class ReportEngine:
                 text = f"事件：{entry.action}"
                 if entry.description:
                     text += f"：{entry.description}"
-            elif entry.type == "agent_action" and entry.before and entry.after:
-                before_r = entry.before.get("relation", "")
-                after_r = entry.after.get("relation", "")
-                before_p = entry.before.get("polarity", "")
-                after_p = entry.after.get("polarity", "")
-                if (before_r, before_p) == (after_r, after_p):
+            elif entry.type == "agent_action":
+                details = entry.details or {}
+                relation_changes = details.get("relation_changes", []) or []
+                # 优先使用 details 中保存的 relation_changes 列表，可完整记录多条关系变化
+                if relation_changes:
+                    for rc in relation_changes:
+                        before_r = rc.get("before_relation", "")
+                        after_r = rc.get("after_relation", "")
+                        before_p = rc.get("before_polarity", "")
+                        after_p = rc.get("after_polarity", "")
+                        # 兼容旧格式
+                        if not before_r and not after_r:
+                            before_r = rc.get("relation", "")
+                            after_r = rc.get("relation", "")
+                        if (before_r, before_p) == (after_r, after_p):
+                            continue
+                        source = entry.actor
+                        target_raw = rc.get("target_name") or rc.get("target_id", "")
+                        target = self._resolve_agent_name(simulation, target_raw)
+                        relation_label = after_r or before_r or "关系"
+                        before_text = f"{before_r or '-'}" + (f"（{before_p}）" if before_p else "")
+                        after_text = f"{after_r or '-'}" + (f"（{after_p}）" if after_p else "")
+                        text = f"关系变化：{source} 对 {target} 的「{relation_label}」从 {before_text} 变为 {after_text}"
+                        facts_by_round.setdefault(entry.round, []).append(text)
                     continue
-                source = entry.actor
-                target = self._resolve_agent_name(
-                    simulation, self._resolve_target_from_action(entry)
-                )
-                relation_label = after_r or before_r or "关系"
-                before_text = f"{before_r or '-'}" + (f"（{before_p}）" if before_p else "")
-                after_text = f"{after_r or '-'}" + (f"（{after_p}）" if after_p else "")
-                text = f"关系变化：{source} 对 {target} 的「{relation_label}」从 {before_text} 变为 {after_text}"
+                # 兜底：使用条目前后的整体关系快照
+                if entry.before and entry.after:
+                    before_r = entry.before.get("relation", "")
+                    after_r = entry.after.get("relation", "")
+                    before_p = entry.before.get("polarity", "")
+                    after_p = entry.after.get("polarity", "")
+                    if (before_r, before_p) == (after_r, after_p):
+                        continue
+                    source = entry.actor
+                    target = self._resolve_agent_name(
+                        simulation, self._resolve_target_from_action(entry)
+                    )
+                    relation_label = after_r or before_r or "关系"
+                    before_text = f"{before_r or '-'}" + (f"（{before_p}）" if before_p else "")
+                    after_text = f"{after_r or '-'}" + (f"（{after_p}）" if after_p else "")
+                    text = f"关系变化：{source} 对 {target} 的「{relation_label}」从 {before_text} 变为 {after_text}"
+                else:
+                    continue
             else:
                 continue
             facts_by_round.setdefault(entry.round, []).append(text)
@@ -170,10 +199,11 @@ class ReportEngine:
         lines = []
         for rec in records:
             rel_changes = []
-            for ru in rec.get("relation_updates", []):
-                target_name = self._resolve_agent_name(simulation, ru.get("target_id", ""))
-                relation = ru.get("relation", "")
-                polarity = ru.get("polarity", "")
+            for ru in rec.get("relation_changes", []):
+                target_raw = ru.get("target_name") or ru.get("target_id", "")
+                target_name = self._resolve_agent_name(simulation, target_raw)
+                relation = ru.get("after_relation") or ru.get("relation", "")
+                polarity = ru.get("after_polarity") or ru.get("polarity", "")
                 rel_changes.append(f"{relation}→{target_name}({polarity})")
             rel_text = f" 关系变化：{', '.join(rel_changes)}" if rel_changes else ""
             target_text = f" 对象：{', '.join(rec['targets'])}" if rec.get("targets") else ""
@@ -181,22 +211,29 @@ class ReportEngine:
 
         timeline_text = "\n".join(lines)
 
-        # 该 Agent 作为 source 或 target 的关系变化（来自 timeline 中所有行动的 relation_updates）
-        relation_changes = []
+        # 该 Agent 作为 source 或 target 的关系变化（来自 timeline 中所有行动的 relation_changes）
+        agent_relation_changes = []
         for entry in simulation.timeline:
-            if entry.type != "agent_action" or not entry.before or not entry.after:
+            if entry.type != "agent_action":
                 continue
             details = entry.details or {}
-            relation_updates = details.get("relation_updates", []) or []
-            for ru in relation_updates:
-                source_name = self._resolve_agent_name(simulation, ru.get("source_id", ""))
-                target_name = self._resolve_agent_name(simulation, ru.get("target_id", ""))
+            relation_changes = details.get("relation_changes", []) or []
+            if not relation_changes:
+                continue
+            for ru in relation_changes:
+                # source 一般是当前行动者；兼容旧格式中的 source_id
+                source_raw = ru.get("source_name") or ru.get("source_id") or entry.actor
+                target_raw = ru.get("target_name") or ru.get("target_id", "")
+                source_name = self._resolve_agent_name(simulation, source_raw)
+                target_name = self._resolve_agent_name(simulation, target_raw)
                 if agent.name not in (source_name, target_name):
                     continue
-                relation_changes.append(
-                    f"- {source_name} → {target_name}: {ru.get('relation', '')} ({ru.get('polarity', '')})"
+                relation = ru.get("after_relation") or ru.get("relation", "")
+                polarity = ru.get("after_polarity") or ru.get("polarity", "")
+                agent_relation_changes.append(
+                    f"- {source_name} → {target_name}: {relation} ({polarity})"
                 )
-        relation_text = "\n".join(relation_changes) if relation_changes else "无"
+        relation_text = "\n".join(agent_relation_changes) if agent_relation_changes else "无"
 
         prompt = f"""【角色信息】
 - 名称: {agent.name}

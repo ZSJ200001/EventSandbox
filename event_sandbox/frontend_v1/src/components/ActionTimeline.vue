@@ -30,8 +30,8 @@
             <div class="action-meta" v-if="entry.details?.sentiment_change">
               情绪变化: <span :class="entry.details.sentiment_change > 0 ? 'positive' : 'negative'">{{ entry.details.sentiment_change > 0 ? '+' : '' }}{{ entry.details.sentiment_change.toFixed(2) }}</span>
             </div>
-            <div class="relation-updates" v-if="entry.details?.relation_updates?.length">
-              <div class="relation-tag" v-for="(rel, rIdx) in entry.details.relation_updates" :key="rIdx">
+            <div class="relation-updates" v-if="entry.details?.relation_changes?.length">
+              <div class="relation-tag" v-for="(rel, rIdx) in entry.details.relation_changes" :key="rIdx">
                 {{ rel.source_relation || rel.relation || '关系更新' }}
               </div>
             </div>

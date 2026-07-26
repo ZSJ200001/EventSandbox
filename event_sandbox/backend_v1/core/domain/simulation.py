@@ -303,21 +303,13 @@ class Simulation(BaseModel):
         """记录当前世界状态快照"""
         self.world_state_history.append({
             "round": round_num,
+            "simulated_time": format_simulated_time(self.current_simulated_time),
             "state": dict(self.world_state),
         })
 
     def add_world_event(self, event: WorldEvent) -> None:
         """追加离散世界事件"""
         self.world_events_history.append(event)
-
-    def get_world_state_context(self) -> str:
-        """生成给 LLM 的世界状态描述文本"""
-        if not self.world_state:
-            return "暂无特殊世界状态。"
-        lines = ["【世界状态】"]
-        for key, value in self.world_state.items():
-            lines.append(f"- {key}: {value}")
-        return "\n".join(lines)
 
     def get_world_model_for_prompt(self) -> str:
         """生成给 LLM 的世界模型说明文本"""

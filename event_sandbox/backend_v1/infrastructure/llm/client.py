@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from json_repair import repair_json
@@ -29,6 +29,7 @@ from .schemas import (
     RelationshipExtractionOutput,
     ScenarioWorldModelOutput,
     ExternalImpactOutput,
+    WorldStateUpdateOutput,
     MainLinePressureOutput,
     InterventionOptionsOutput,
 )
@@ -237,7 +238,6 @@ class AsyncLLMClient:
         is_forced_response: bool = False,
         all_agents: Optional[list[dict]] = None,
         time_context: Optional[dict] = None,
-        world_state_context: str = "",
         event_types: Optional[list[str]] = None,
     ) -> AgentDecisionOutput:
         """Agent 决策（精简版：去掉五维人格分数，用 description 替代 deep_profile）"""
@@ -290,8 +290,6 @@ class AsyncLLMClient:
 
 请注意：你的行动应符合当前模拟时间尺度。"""
 
-        world_state_info = f"\n\n{world_state_context}" if world_state_context else ""
-
         event_types_info = ""
         if event_types:
             event_types_info = "\n\n【本场景事件类型】\n" + ", ".join(event_types)
@@ -307,7 +305,6 @@ class AsyncLLMClient:
 {current_situation}
 {visible_info}
 {env_info}
-{world_state_info}
 {event_types_info}
 {relationships_info}
 {history_info}
@@ -329,14 +326,8 @@ class AsyncLLMClient:
             "expected_outcome": "维持现状",
             "sentiment_change": 0,
             "target_agents": [],
-            "action_intensity": 0.5,
-            "risk_level": "medium",
             "action_description": "",
-            "relation_updates": [],
-            "environment_changes": {},
-            "world_state_updates": {},
-            "events": [],
-            "self_log": "",
+            "relation_changes": [],
         }
         data = self._parse_json(response.content, fallback, method=__name__)
         logger.info("[LLM] decide_action 完成, agent=%s, action=%s", agent_name, data.get("action"))
@@ -348,14 +339,12 @@ class AsyncLLMClient:
         action: str,
         context: str,
         target_agents: Optional[list[str]] = None,
-        action_intensity: float = 0.5,
     ) -> str:
         """生成行动自然语言描述"""
         target_info = f"\n影响目标: {', '.join(target_agents)}" if target_agents else ""
         user_prompt = f"""智能体: {agent_name}
 行动: {action}
-上下文: {context}
-行动强度: {action_intensity}{target_info}
+上下文: {context}{target_info}
 
 描述发生了什么。"""
 
@@ -366,6 +355,67 @@ class AsyncLLMClient:
         )
         response = await self.chat(messages, temperature=0.7, max_tokens=256)
         return response.content.strip()
+
+    async def aggregate_world_state_updates(
+        self,
+        current_world_state: dict[str, Any],
+        world_state_schema: dict[str, str],
+        round_actions: list[dict],
+        relation_changes: list[dict],
+        current_round: int,
+        time_context: Optional[dict] = None,
+    ) -> WorldStateUpdateOutput:
+        """汇总本回合所有 Agent 行动，推导世界状态变化"""
+        logger.info("[LLM] aggregate_world_state_updates 开始, round=%d, actions=%d", current_round, len(round_actions))
+
+        schema_info = "\n".join([f"- {k} ({v})" for k, v in world_state_schema.items()]) or "暂无 schema"
+        state_info = "\n".join([f"- {k}: {v}" for k, v in current_world_state.items()]) or "暂无"
+        actions_info = "\n".join(
+            [f"- {a.get('agent_name', '未知')}: {a.get('action', '')} | {a.get('action_description', '')}" for a in round_actions]
+        )
+        relations_info = "\n".join(
+            [f"- {c.get('source_name', '')} -> {c.get('target_name', '')}: {c.get('before_relation', '')} -> {c.get('after_relation', '')}"
+             for c in relation_changes[:20]]
+        ) or "本回合无直接关系变化"
+
+        time_info = ""
+        if time_context and time_context.get("has_time_semantics"):
+            time_info = f"""
+【时间上下文】
+- 推演开始时间：{time_context.get('start_datetime', '未知')}
+- 当前模拟时间：{time_context.get('current_simulated_time', '未知')}
+- 每回合代表：{time_context.get('round_duration', '未知')}
+- 当前是第 {time_context.get('current_round', '?')} / {time_context.get('total_rounds', '?')} 回合
+
+请注意：推导世界状态时应以当前模拟时间为时间基准。"""
+
+        user_prompt = f"""当前回合: {current_round}{time_info}
+
+【需要跟踪的世界状态字段】
+{schema_info}
+
+【当前世界状态】
+{state_info}
+
+【本回合 Agent 行动】
+{actions_info}
+
+【本回合关系变化】
+{relations_info}"""
+
+        fallback = {
+            "world_state_updates": {},
+            "reasoning": "默认无变化",
+        }
+        messages = self._build_messages(
+            prompts.SYS_AGGREGATE_WORLD_STATE,
+            user_prompt,
+            few_shot_key=None,
+        )
+        response = await self.chat(messages, temperature=0.5, max_tokens=512)
+        data = self._parse_json(response.content, fallback, method=__name__)
+        logger.info("[LLM] aggregate_world_state_updates 完成, updates=%s", data.get("world_state_updates", {}))
+        return WorldStateUpdateOutput.model_validate(data)
 
     async def analyze_external_impact(
         self,
@@ -641,6 +691,7 @@ class AsyncLLMClient:
         event_text: str,
         entities_info: Optional[list[dict]] = None,
         main_line: str = "",
+        time_context: Optional[dict] = None,
     ) -> ScenarioWorldModelOutput:
         """提取场景世界模型说明（方案 C）"""
         logger.info("[LLM] extract_world_model 开始, text=%s...", event_text[:50])
@@ -655,9 +706,21 @@ class AsyncLLMClient:
 
         main_line_info = f"\n推演主线（核心问题）: {main_line}" if main_line else ""
 
+        time_info = ""
+        if time_context and time_context.get("has_time_semantics"):
+            time_info = f"""
+【时间上下文】
+- 推演开始时间：{time_context.get('start_datetime', '未知')}
+- 当前模拟时间：{time_context.get('current_simulated_time', '未知')}
+- 每回合代表：{time_context.get('round_duration', '未知')}
+- 推演总回合数：{time_context.get('total_rounds', '?')}
+
+请注意：initial_world_state 中的时间相关字段应与上述推演开始时间/当前模拟时间保持一致。事件描述中提到的具体日期属于模拟时间线，不要混用真实历史年份。"""
+
         user_prompt = f"""初始事件描述：
 {event_text}
 {main_line_info}
+{time_info}
 
 已提取的实体：
 {entities_str or '暂无'}

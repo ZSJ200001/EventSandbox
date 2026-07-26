@@ -82,8 +82,15 @@ class TestHelperMethods:
                 action="进攻",
                 details={
                     "target_agents": ["库拉索队"],
-                    "relation_updates": [
-                        {"source_id": "德国队", "target_id": "库拉索队", "relation": "压制", "polarity": "negative"}
+                    "relation_changes": [
+                        {
+                            "relation_id": "r0000001",
+                            "target_name": "库拉索队",
+                            "before_relation": "对抗",
+                            "before_polarity": "neutral",
+                            "after_relation": "压制",
+                            "after_polarity": "negative",
+                        }
                     ],
                 },
             ),
@@ -113,8 +120,15 @@ class TestHelperMethods:
                 action="攻入一球",
                 details={
                     "target_agents": ["库拉索队"],
-                    "relation_updates": [
-                        {"source_id": "德国队", "target_id": "库拉索队", "relation": "压制", "polarity": "negative"}
+                    "relation_changes": [
+                        {
+                            "relation_id": "r0000001",
+                            "target_name": "库拉索队",
+                            "before_relation": "对抗",
+                            "before_polarity": "neutral",
+                            "after_relation": "压制",
+                            "after_polarity": "negative",
+                        }
                     ],
                 },
                 before={"relation": "对抗", "polarity": "neutral"},
@@ -154,8 +168,15 @@ class TestReportGenerationIntegration:
                 action="攻入一球",
                 details={
                     "target_agents": ["库拉索队"],
-                    "relation_updates": [
-                        {"source_id": "德国队", "target_id": "库拉索队", "relation": "压制", "polarity": "negative"}
+                    "relation_changes": [
+                        {
+                            "relation_id": "r0000001",
+                            "target_name": "库拉索队",
+                            "before_relation": "对抗",
+                            "before_polarity": "neutral",
+                            "after_relation": "压制",
+                            "after_polarity": "negative",
+                        }
                     ],
                 },
                 before={"relation": "对抗", "polarity": "neutral"},
@@ -195,8 +216,15 @@ class TestReportGenerationIntegration:
                 action="攻入一球",
                 details={
                     "target_agents": ["库拉索队"],
-                    "relation_updates": [
-                        {"source_id": "德国队", "target_id": "库拉索队", "relation": "压制", "polarity": "negative"}
+                    "relation_changes": [
+                        {
+                            "relation_id": "r0000001",
+                            "target_name": "库拉索队",
+                            "before_relation": "对抗",
+                            "before_polarity": "neutral",
+                            "after_relation": "压制",
+                            "after_polarity": "negative",
+                        }
                     ],
                 },
                 before={"relation": "对抗", "polarity": "neutral"},

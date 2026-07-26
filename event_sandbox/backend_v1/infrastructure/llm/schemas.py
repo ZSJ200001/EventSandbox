@@ -42,14 +42,15 @@ class AgentDecisionOutput(BaseModel):
     expected_outcome: str = ""
     sentiment_change: float = 0.0
     target_agents: list[str] = Field(default_factory=list)
-    action_intensity: float = 0.5
-    risk_level: str = "medium"
     action_description: str = ""
-    relation_updates: list[dict] = Field(default_factory=list)
-    environment_changes: dict = Field(default_factory=dict)
+    relation_changes: list[dict] = Field(default_factory=list)
+
+
+class WorldStateUpdateOutput(BaseModel):
+    """世界状态汇总输出"""
+
     world_state_updates: dict[str, Any] = Field(default_factory=dict)
-    events: list[dict] = Field(default_factory=list)
-    self_log: str = ""
+    reasoning: str = ""
 
 
 class ExtractedEntity(BaseModel):

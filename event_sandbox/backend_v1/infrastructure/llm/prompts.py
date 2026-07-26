@@ -21,7 +21,7 @@ FEW_SHOT_EXAMPLES = {
                 "expected_outcome": "通过新品发布吸引消费者关注，维持利润水平",
                 "sentiment_change": 0.1,
                 "target_agents": [],
-                "relation_updates": []
+                "relation_changes": []
             },
         },
         {
@@ -39,7 +39,7 @@ FEW_SHOT_EXAMPLES = {
                 "expected_outcome": "找到性价比更高的替代产品",
                 "sentiment_change": -0.1,
                 "target_agents": ["XX奶茶"],
-                "relation_updates": [
+                "relation_changes": [
                     {
                         "action": "update",
                         "relation_id": "a1b2c3d4",
@@ -104,7 +104,8 @@ SYS_EXTRACT_WORLD_MODEL = """你是一个场景分析专家。请根据给定的
 3. event_types 只用于分类离散事件，不是 Agent 的行动菜单；Agent 的 action 仍然自由生成。
 4. terminal_condition 必须是简单的比较表达式，只使用 ==、!=、<、<=、>、>=、and、or、not、in。
 5. 如果无法判断场景类型，scenario_type 使用 "generic"，world_state_schema 可以为空。
-6. 直接返回JSON，不要markdown代码块。"""
+6. 若提供了时间上下文，initial_world_state 中的时间相关字段（如 current_date、match_time）必须与推演起始时间保持一致；事件描述中提到的具体日期应映射到模拟时间线上，而不是使用真实历史年份。
+7. 直接返回JSON，不要markdown代码块。"""
 
 SYS_GENERATE_PERSONALITY = """你是一个多智能体仿真系统的人格生成专家。
 根据智能体的类型和上下文，生成人格画像，仅返回以下两个字段：
@@ -119,44 +120,40 @@ SYS_DECIDE_ACTION = """你是一个多智能体仿真系统的决策引擎。
 【决策原则】
 1. 决策必须符合角色的性格、动机和约束条件
 2. 考虑与其他角色的关系和历史互动
-3. 分析局势时要基于实际收到的信息，不要臆测未收到的情报
+3. 基于实际收到的信息分析局势，不要臆测未收到的情报
 4. 行动应产生可预见的结果
-5. 行为多样性：尽量避免与过去3回合采取完全相同的行动。除非有明确的战略理由需要坚持同一策略，否则应选择不同的行动方式。重复的表态类行动（如连续召开新闻发布会）效果会递减。
-
-【行动自由度】
-- action 字段可自由生成，不必局限于固定列表
-- action 字数严格控制在 6 个汉字以内，越简洁越好，例如"宣布制裁"、"组织抗议"、"调整定价"等
-- 只要行动符合角色身份和当前局势，就是合法的
+5. 行为多样性：尽量避免与过去3回合采取完全相同的行动
+6. 行动自由生成：action 字段控制在 6 个汉字以内，越简洁越好
 
 【推理要求】
-按以下步骤推理，写入 reasoning 字段：
+按以下步骤推理并写入 reasoning：
 1. 局势感知：本轮收到了哪些信息？
 2. 利益分析：核心目标受到什么影响？
 3. 他方预测：其他关键角色本轮可能做什么？
-4. 选项评估：列出2-3个可选行动，分析利弊
+4. 选项评估：列出2-3个可选行动并分析利弊
 5. 最终决策：选择哪个行动，为什么？
 
 【行动可见性规则】
 - target_agents 为空 → 公开行动，所有角色可见
-- target_agents 有值 → 双边/私下行动，仅涉事双方可见
+- target_agents 有值 → 针对具体目标方的行动，仅涉事双方可见
 
-【世界状态影响】
-- 如果当前场景有世界状态（如比分、时间、球权、市场份额等），你的 action 可能改变这些状态。
-- 请在 world_state_updates 中说明具体变化：{"状态字段名": "新值"}。
-- 如果 action 触发了离散事件（如进球、犯规、产品发布、监管处罚），请在 events 中列出，type 必须为本场景 event_types 中的类型。
-- 不是所有行动都会改变世界状态或触发事件，没有变化时留空即可。
+【关系变更规则】
+1. 每条 relation_change 只操作一条有向边：你（source）→ 目标（target）
+2. 只能修改 source_id 是你自己的关系边
+3. action=create：仅在 source→target 之间完全没有该标签的关系时使用，relation_id 留空
+4. action=update：修改已有关系边，必须填写 relation_id；关系标签变化时也用 update
+5. 禁止对同一对 (source, target) 返回多个 relation_changes
+6. relation_changes 只包含本次行动直接影响的关系
 
 【返回JSON格式】
 {
-    "action": "选择的行动",
+    "action": "行动名称，6个汉字以内",
     "reasoning": "完整推理过程",
     "expected_outcome": "预期结果",
     "sentiment_change": -1.0 到 1.0,
     "target_agents": ["目标角色名称"],
-    "action_intensity": 0.0 到 1.0,
-    "risk_level": "low/medium/high",
     "action_description": "本轮行动的自然语言描述，100字以内",
-    "relation_updates": [
+    "relation_changes": [
         {
             "action": "create 或 update",
             "relation_id": "update时填写关系ID，create时留空",
@@ -166,29 +163,32 @@ SYS_DECIDE_ACTION = """你是一个多智能体仿真系统的决策引擎。
             "description": "关系变化的具体描述，50字以内",
             "polarity": "positive/negative/neutral"
         }
-    ],
-    "environment_changes": {"环境维度": "新状态"},
+    ]
+}
+"""
+
+SYS_AGGREGATE_WORLD_STATE = """你是一个多智能体仿真系统的世界状态汇总引擎。
+
+任务：根据本回合所有 Agent 的行动和关系变化，推导出世界状态应该如何变化。
+
+【输入信息】
+- 当前世界状态（可能为空）
+- 本场景需要跟踪的世界状态字段及类型
+- 本回合所有 Agent 的 action 和 action_description
+- 本回合发生的关系变化
+
+【输出JSON格式】
+{
     "world_state_updates": {"状态字段名": "新值"},
-    "events": [
-        {"type": "事件类型", "description": "事件描述", "metadata": {"任意补充字段": "值"}}
-    ],
-    "self_log": "本回合行动摘要"
+    "reasoning": "推导过程，100字以内"
 }
 
-【关系更新规则】
-1. 每条 relation_update 只操作一条有向边：你（source）→ 目标（target）
-2. 你只能修改 source_id 是你自己的关系边，不能修改别人对你的关系
-3. action=create：新建一条关系边，relation_id 留空
-4. action=update：修改已有关系边，必须填写 relation_id
-5. 优先更新已有关系，只有本次行动确实建立了新类型的关系时才 create
-6. relation_updates 只包含本次行动直接影响的关系，不要更新无关关系
-7. 间接影响会由其他角色在后续回合自行反应
-
-polarity 说明：
-- positive：友好/合作/支持
-- negative：对抗/冲突/敌对
-- neutral：中立/无关/一般往来
-- 无明确倾向时可省略
+【规则】
+1. 只输出 schema 中已声明字段的更新，不要新增未声明字段
+2. 数值类型字段请输出数字
+3. 如果行动没有改变世界状态，world_state_updates 返回空对象 {}
+4. 基于事实推导，不要臆测未发生的变化
+5. 多个 Agent 的行动对世界状态有矛盾影响时，取综合结果
 """
 
 SYS_GENERATE_ACTION_DESCRIPTION = """你是一个多智能体仿真的叙事生成器。
