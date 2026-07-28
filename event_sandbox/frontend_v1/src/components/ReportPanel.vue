@@ -19,14 +19,28 @@
             >
               重新生成基线
             </button>
+            <button
+              v-if="!isLoading"
+              class="regenerate-btn regenerate-both"
+              @click="regenerate('both')"
+            >
+              同时重新生成
+            </button>
           </template>
-          <button
-            v-else-if="(report || baselineReport) && !isLoading"
-            class="regenerate-btn"
-            @click="regenerate(viewMode === 'baseline' ? 'baseline' : 'graph')"
-          >
-            重新生成
-          </button>
+          <template v-else-if="(report || baselineReport) && !isLoading">
+            <button
+              class="regenerate-btn"
+              @click="regenerate(viewMode === 'baseline' ? 'baseline' : 'graph')"
+            >
+              重新生成
+            </button>
+            <button
+              class="regenerate-btn regenerate-both"
+              @click="regenerate('both')"
+            >
+              同时生成两者
+            </button>
+          </template>
           <button class="close-btn" @click="close">×</button>
         </div>
       </div>
@@ -338,6 +352,17 @@ function renderMarkdown(text) {
 .regenerate-btn:hover {
   background: #F5F5F5;
   color: #000;
+}
+
+.regenerate-both {
+  border-color: #1A936F;
+  color: #1A936F;
+}
+
+.regenerate-both:hover {
+  background: #E8F5E9;
+  color: #157a5c;
+  border-color: #157a5c;
 }
 
 .report-body {

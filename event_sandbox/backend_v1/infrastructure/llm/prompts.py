@@ -105,7 +105,8 @@ SYS_EXTRACT_WORLD_MODEL = """你是一个场景分析专家。请根据给定的
 4. terminal_condition 必须是简单的比较表达式，只使用 ==、!=、<、<=、>、>=、and、or、not、in。
 5. 如果无法判断场景类型，scenario_type 使用 "generic"，world_state_schema 可以为空。
 6. 若提供了时间上下文，initial_world_state 中的时间相关字段（如 current_date、match_time）必须与推演起始时间保持一致；事件描述中提到的具体日期应映射到模拟时间线上，而不是使用真实历史年份。
-7. 直接返回JSON，不要markdown代码块。"""
+7. initial_world_state 中 string 类型的字段值必须使用中文描述（如"面临辞职压力"而非"incumbent_under_pressure"），禁止使用英文单词或英文短语作为值。数字类型字段用数字，布尔类型用 true/false。
+8. 直接返回JSON，不要markdown代码块。"""
 
 SYS_GENERATE_PERSONALITY = """你是一个多智能体仿真系统的人格生成专家。
 根据智能体的类型和上下文，生成人格画像，仅返回以下两个字段：
@@ -185,10 +186,12 @@ SYS_AGGREGATE_WORLD_STATE = """你是一个多智能体仿真系统的世界状�
 
 【规则】
 1. 只输出 schema 中已声明字段的更新，不要新增未声明字段
-2. 数值类型字段请输出数字
-3. 如果行动没有改变世界状态，world_state_updates 返回空对象 {}
-4. 基于事实推导，不要臆测未发生的变化
-5. 多个 Agent 的行动对世界状态有矛盾影响时，取综合结果
+2. 数值类型字段请输出数字，布尔类型输出 true/false
+3. string 类型字段的值必须使用中文描述（如"已宣布辞职"而非"resigned"），禁止使用英文单词作为值
+4. 如果行动没有改变世界状态，world_state_updates 返回空对象 {}
+5. 基于事实推导，不要臆测未发生的变化
+6. 多个 Agent 的行动对世界状态有矛盾影响时，取综合结果
+7. 若提供了时间上下文，时间相关字段的更新应与当前模拟时间保持一致
 """
 
 SYS_GENERATE_ACTION_DESCRIPTION = """你是一个多智能体仿真的叙事生成器。
@@ -227,7 +230,7 @@ SYS_ANALYZE_EXTERNAL_IMPACT = """你是一个多智能体仿真系统的全局�
     ]
 }
 
-如果外部事件没有改变世界状态或产生离散事件，world_state_updates 和 events 可以为空。
+如果外部事件没有改变世界状态或产生离散事件，world_state_updates 和 events 可以为空。world_state_updates 中 string 类型的值必须使用中文描述，禁止使用英文单词。
 
 关系更新规则：
 1. 每条 relation_update 只操作一条有向边：source → target
