@@ -2,27 +2,17 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app.dependencies import get_agent_service, get_simulation_service
 from schemas.requests import ModifyAgentRequest, AddAgentRequest
 from schemas.responses import AgentDetailResponse, ModifyAgentResponse
-from core.exceptions import EventSandboxError
+from app.error_handlers import handle_api_error
 from services.agent_service import AgentService
 from services.simulation_service import SimulationService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/simulations/{simulation_id}/agents", tags=["agents"])
-
-
-def _handle_error(e: Exception) -> None:
-    if isinstance(e, HTTPException):
-        raise e
-    if isinstance(e, EventSandboxError):
-        logger.warning("[API] 业务异常: %s", e.message)
-        raise HTTPException(status_code=404 if e.code in ("SIMULATION_NOT_FOUND", "AGENT_NOT_FOUND") else 400, detail=e.message)
-    logger.error("[API] 未知异常: %s", e, exc_info=True)
-    raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 @router.get("/{agent_id}", response_model=AgentDetailResponse)
@@ -43,7 +33,7 @@ async def get_agent_detail(
             visible_actions=result["visible_actions"],
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{agent_id}/modify", response_model=ModifyAgentResponse)
@@ -59,7 +49,7 @@ async def modify_agent(
         agent = await service.modify(simulation_id, agent_id, request.field, request.value, request.reason)
         return ModifyAgentResponse(agent=agent, message=f"成功修改 {request.field}")
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("")
@@ -81,7 +71,7 @@ async def add_agent(
             "simulation": simulation,
         }
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.get("/{agent_id}/actions")
@@ -95,4 +85,4 @@ async def get_agent_actions(
     try:
         return await service.get_actions(simulation_id, agent_id)
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)

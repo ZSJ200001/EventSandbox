@@ -77,6 +77,7 @@ class AsyncLLMClient:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        method: str = "chat",
     ) -> LLMResponse:
         """发送聊天请求，带自动重试"""
         payload = {
@@ -92,7 +93,7 @@ class AsyncLLMClient:
         last_error: Optional[Exception] = None
         for attempt in range(1, self.config.max_retries + 1):
             try:
-                logger.debug("[LLM] chat 请求 attempt=%d/%d", attempt, self.config.max_retries)
+                logger.debug("[LLM] %s 请求 attempt=%d/%d", method, attempt, self.config.max_retries)
                 response = await self.client.post("/chat/completions", json=payload)
                 response.raise_for_status()
                 data = response.json()
@@ -103,24 +104,25 @@ class AsyncLLMClient:
                     usage=data.get("usage", {}),
                     finish_reason=data["choices"][0].get("finish_reason", ""),
                 )
-                logger.debug("[LLM] chat 成功, tokens=%s", result.usage)
+                logger.debug("[LLM] %s 成功, tokens=%s", method, result.usage)
                 return result
 
             except Exception as e:
                 last_error = e
                 logger.warning(
-                    "[LLM] chat 失败 attempt=%d/%d, error=%s",
+                    "[LLM] %s 失败 attempt=%d/%d, error=%s",
+                    method,
                     attempt,
                     self.config.max_retries,
                     e,
                 )
                 if attempt < self.config.max_retries:
                     delay = self.config.retry_delay * attempt
-                    logger.info("[LLM] 等待 %.1fs 后重试...", delay)
+                    logger.info("[LLM] %s 等待 %.1fs 后重试...", method, delay)
                     await asyncio.sleep(delay)
 
-        logger.error("[LLM] chat 重试耗尽, error=%s", last_error)
-        raise LLMError(f"LLM 调用失败（已重试{self.config.max_retries}次）: {last_error}")
+        logger.error("[LLM] %s 重试耗尽, error=%s", method, last_error)
+        raise LLMError(f"{method} 调用失败（已重试{self.config.max_retries}次）: {last_error}")
 
     def _build_messages(
         self,
@@ -210,7 +212,7 @@ class AsyncLLMClient:
         messages = self._build_messages(
             prompts.SYS_GENERATE_PERSONALITY, user_prompt
         )
-        response = await self.chat(messages, temperature=0.8, max_tokens=1024)
+        response = await self.chat(messages, temperature=0.8, max_tokens=1024, method="generate_agent_personality")
         data = self._parse_json(
             response.content,
             {
@@ -318,7 +320,7 @@ class AsyncLLMClient:
             user_prompt,
             few_shot_key="decide_action",
         )
-        response = await self.chat(messages, temperature=0.7, max_tokens=2048)
+        response = await self.chat(messages, temperature=0.7, max_tokens=2048, method="decide_action")
 
         fallback = {
             "action": "观望/不行动",
@@ -353,7 +355,7 @@ class AsyncLLMClient:
             user_prompt,
             few_shot_key="action_description",
         )
-        response = await self.chat(messages, temperature=0.7, max_tokens=256)
+        response = await self.chat(messages, temperature=0.7, max_tokens=256, method="generate_action_description")
         return response.content.strip()
 
     async def aggregate_world_state_updates(
@@ -412,7 +414,7 @@ class AsyncLLMClient:
             user_prompt,
             few_shot_key=None,
         )
-        response = await self.chat(messages, temperature=0.5, max_tokens=512)
+        response = await self.chat(messages, temperature=0.5, max_tokens=512, method="aggregate_world_state_updates")
         data = self._parse_json(response.content, fallback, method=__name__)
         logger.info("[LLM] aggregate_world_state_updates 完成, updates=%s", data.get("world_state_updates", {}))
         return WorldStateUpdateOutput.model_validate(data)
@@ -465,7 +467,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_ANALYZE_EXTERNAL_IMPACT),
             LLMMessage(role="user", content=user_prompt),
         ]
-        response = await self.chat(messages, temperature=0.7, max_tokens=1024)
+        response = await self.chat(messages, temperature=0.7, max_tokens=1024, method="analyze_external_impact")
         data = self._parse_json(response.content, {"relation_updates": [], "agent_logs": {}}, method=__name__)
         logger.info("[LLM] analyze_external_impact 完成, updates=%d", len(data.get("relation_updates", [])))
         return ExternalImpactOutput.model_validate(data)
@@ -506,7 +508,7 @@ class AsyncLLMClient:
             user_prompt,
             few_shot_key="generate_intervention_options",
         )
-        response = await self.chat(messages, temperature=0.8, max_tokens=1024)
+        response = await self.chat(messages, temperature=0.8, max_tokens=1024, method="generate_intervention_options")
         data = self._parse_json(
             response.content,
             {
@@ -555,7 +557,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_GENERATE_MAIN_LINE_PRESSURE),
             LLMMessage(role="user", content=user_prompt),
         ]
-        response = await self.chat(messages, temperature=0.7, max_tokens=1024)
+        response = await self.chat(messages, temperature=0.7, max_tokens=1024, method="generate_main_line_pressure")
         data = self._parse_json(
             response.content,
             {"pressures": {}},
@@ -576,7 +578,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_EXTRACT_ENTITIES),
             LLMMessage(role="user", content=f"事件描述：\n{event_text}"),
         ]
-        response = await self.chat(messages, temperature=0.3, max_tokens=1024)
+        response = await self.chat(messages, temperature=0.3, max_tokens=1024, method="extract_entities")
         data = self._parse_json(
             response.content,
             {"entities": [], "is_complete": True, "reasoning": ""},
@@ -604,7 +606,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_CHECK_MISSING_ENTITIES),
             LLMMessage(role="user", content=user_prompt),
         ]
-        response = await self.chat(messages, temperature=0.3, max_tokens=1024)
+        response = await self.chat(messages, temperature=0.3, max_tokens=1024, method="check_missing_entities")
         data = self._parse_json(
             response.content,
             {"additional_entities": [], "is_complete": True, "reasoning": ""},
@@ -637,7 +639,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_BUILD_ENTITY_ATTRIBUTES),
             LLMMessage(role="user", content=user_prompt),
         ]
-        response = await self.chat(messages, temperature=0.5, max_tokens=768)
+        response = await self.chat(messages, temperature=0.5, max_tokens=768, method="build_entity_attributes")
         data = self._parse_json(
             response.content,
             {
@@ -674,7 +676,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_EXTRACT_RELATIONSHIPS),
             LLMMessage(role="user", content=user_prompt),
         ]
-        response = await self.chat(messages, temperature=0.3, max_tokens=1536)
+        response = await self.chat(messages, temperature=0.3, max_tokens=1536, method="extract_relationships")
         data = self._parse_json(
             response.content,
             {"relationships": [], "event_summary": event_text, "scene_ontology": ""},
@@ -731,7 +733,7 @@ class AsyncLLMClient:
             LLMMessage(role="system", content=prompts.SYS_EXTRACT_WORLD_MODEL),
             LLMMessage(role="user", content=user_prompt),
         ]
-        response = await self.chat(messages, temperature=0.3, max_tokens=1536)
+        response = await self.chat(messages, temperature=0.3, max_tokens=1536, method="extract_world_model")
         data = self._parse_json(
             response.content,
             {

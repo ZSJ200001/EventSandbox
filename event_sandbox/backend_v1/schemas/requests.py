@@ -31,14 +31,6 @@ class InterventionRequest(BaseModel):
     intervention: dict
 
 
-class QuickInterventionRequest(BaseModel):
-    simulation_id: str
-    intervention_type: str
-    quick_option: str
-    custom_value: Optional[str] = None
-    target_agent_id: Optional[str] = None
-
-
 class ModifyAgentRequest(BaseModel):
     simulation_id: str
     agent_id: str

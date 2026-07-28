@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies import get_simulation_service, get_simulation_engine
 from schemas.requests import CreateSimulationRequest, StepSimulationRequest, BatchStepRequest, InjectEventRequest
 from schemas.responses import (
+    CreateTaskResponse,
+    CreateTaskStatusResponse,
     CreateSimulationResponse,
     StepSimulationResponse,
     SimulationStateResponse,
@@ -19,51 +21,62 @@ from schemas.responses import (
     PauseSimulationResponse,
     InjectEventResponse,
 )
-from core.exceptions import EventSandboxError
 from engines.simulation_engine import SimulationEngine
 from services.simulation_service import SimulationService
+from app.error_handlers import handle_api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
 
 
-def _handle_error(e: Exception) -> None:
-    """统一异常转换"""
-    if isinstance(e, HTTPException):
-        raise e
-    if isinstance(e, EventSandboxError):
-        logger.warning("[API] 业务异常: %s", e.message)
-        if e.code == "STEP_LOCKED":
-            # 使用 423 Locked 语义，便于前端识别并停止重试
-            raise HTTPException(status_code=423, detail=e.message)
-        raise HTTPException(status_code=400 if e.code in ("SIMULATION_COMPLETED", "SIMULATION_PAUSED", "VALIDATION_ERROR") else 404, detail=e.message)
-    logger.error("[API] 未知异常: %s", e, exc_info=True)
-    raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
-
-
-@router.post("", response_model=CreateSimulationResponse)
+@router.post("", response_model=CreateTaskResponse)
 async def create_simulation(
     request: CreateSimulationRequest,
     service: SimulationService = Depends(get_simulation_service),
 ):
-    """创建推演"""
+    """创建推演（异步任务，立即返回 task_id，前端轮询获取进度）"""
     logger.info("[API] POST /api/simulations, name=%s", request.name)
     try:
-        simulation = await service.create(
+        task = await service.create(
             name=request.name,
             description=request.description,
             event_text=request.event_text,
             config=request.config,
             rounds=request.rounds,
         )
-        return CreateSimulationResponse(
-            simulation=simulation,
-            generated_agents=simulation.agents,
-            topology=simulation.topology,
-            message="推演场景创建成功",
+        return CreateTaskResponse(
+            task_id=task["task_id"],
+            status=task["status"],
+            logs=task["logs"],
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
+
+
+@router.get("/create/{task_id}", response_model=CreateTaskStatusResponse)
+async def get_create_status(
+    task_id: str,
+    service: SimulationService = Depends(get_simulation_service),
+):
+    """查询创建推演任务进度。前端轮询此接口获取实时日志和结果。"""
+    logger.info("[API] GET /api/simulations/create/%s", task_id)
+    try:
+        task = await service.get_create_status(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"创建任务 {task_id} 不存在")
+        return CreateTaskStatusResponse(
+            task_id=task["task_id"],
+            status=task["status"],
+            logs=task["logs"],
+            simulation=task.get("simulation"),
+            error=task.get("error", ""),
+            created_at=task.get("created_at", 0),
+            updated_at=task.get("updated_at", 0),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        handle_api_error(e)
 
 
 @router.get("", response_model=ListSimulationsResponse)
@@ -97,7 +110,7 @@ async def list_simulations(
             offset=result["offset"],
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.get("/{simulation_id}", response_model=SimulationStateResponse)
@@ -132,7 +145,7 @@ async def get_simulation(
             is_being_stepped=service.is_stepping(simulation_id),
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/step", response_model=StepSimulationResponse)
@@ -153,7 +166,7 @@ async def step_simulation(
             round_summary=result["round_summary"],
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/events", response_model=InjectEventResponse)
@@ -175,7 +188,7 @@ async def inject_event(
             ),
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/batch-step", response_model=BatchStepResponse)
@@ -205,7 +218,7 @@ async def batch_step(
             error=task["error"],
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.get("/{simulation_id}/batch-status/{task_id}", response_model=BatchStepStatusResponse)
@@ -232,7 +245,7 @@ async def get_batch_status(
             updated_at=task["updated_at"],
         )
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/pause", response_model=PauseSimulationResponse)
@@ -246,7 +259,7 @@ async def pause_simulation(
         simulation = await service.pause(simulation_id)
         return PauseSimulationResponse(simulation=simulation, message="推演已暂停")
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/resume", response_model=PauseSimulationResponse)
@@ -260,7 +273,7 @@ async def resume_simulation(
         simulation = await service.resume(simulation_id)
         return PauseSimulationResponse(simulation=simulation, message="推演已恢复")
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.delete("/{simulation_id}", response_model=DeleteSimulationResponse)
@@ -276,4 +289,4 @@ async def delete_simulation(
             raise HTTPException(status_code=404, detail="推演不存在")
         return DeleteSimulationResponse(message="推演已删除")
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)

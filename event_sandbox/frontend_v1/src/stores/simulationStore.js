@@ -73,12 +73,42 @@ async function createSimulation(name, description, eventText, rounds = 10, confi
   clearError()
   addLog(`开始创建推演: ${name}`)
   try {
-    const data = await api.createSimulation({ name, description, event_text: eventText, rounds, config })
+    // 1. 提交异步任务
+    const taskResp = await api.createSimulation({ name, description, event_text: eventText, rounds, config })
+    const { task_id } = taskResp
+    addLog(`创建任务已提交: ${task_id}`)
+
+    // 2. 轮询直到完成
+    const seenMsg = new Set()
+    const data = await new Promise((resolve, reject) => {
+      const poll = setInterval(async () => {
+        try {
+          const status = await api.getCreateStatus(task_id)
+          // 输出新日志到 SystemLogs
+          for (const log of (status.logs || [])) {
+            const key = `${log.time}:${log.msg}`
+            if (seenMsg.has(key)) continue
+            seenMsg.add(key)
+            addLog(log.msg)
+          }
+          if (status.status === 'completed') {
+            clearInterval(poll)
+            resolve({ simulation: status.simulation, generated_agents: status.simulation?.agents || [], topology: status.simulation?.topology })
+          } else if (status.status === 'failed') {
+            clearInterval(poll)
+            reject(new Error(status.error || '创建推演失败'))
+          }
+        } catch (err) {
+          clearInterval(poll)
+          reject(err)
+        }
+      }, 1500)
+    })
+
     state.simulation = data.simulation
     state.agents = data.generated_agents || []
     state.topology = data.topology
     state.recentEvents = []
-    addLog(`推演创建成功: ${data.simulation.id}, 生成 ${data.generated_agents?.length || 0} 个实体`)
     return data
   } catch (err) {
     setError(err.message || '创建推演失败')

@@ -7,10 +7,11 @@ GET  /api/simulations/{simulation_id}/report
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app.dependencies import get_simulation_engine, get_llm_client
-from core.exceptions import EventSandboxError, SimulationNotFoundError
+from core.exceptions import SimulationNotFoundError
+from app.error_handlers import handle_api_error
 from engines.simulation_engine import SimulationEngine
 from engines.report_engine import ReportEngine, BaselineReportEngine
 from infrastructure.llm.client import AsyncLLMClient
@@ -19,17 +20,6 @@ from schemas.report_responses import GenerateReportResponse, ReportBundleRespons
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/simulations", tags=["reports"])
-
-
-def _handle_error(e: Exception) -> None:
-    """统一异常转换"""
-    if isinstance(e, HTTPException):
-        raise e
-    if isinstance(e, EventSandboxError):
-        logger.warning("[API] 业务异常: %s", e.message)
-        raise HTTPException(status_code=404 if e.code == "SIMULATION_NOT_FOUND" else 400, detail=e.message)
-    logger.error("[API] 未知异常: %s", e, exc_info=True)
-    raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 @router.get("/{simulation_id}/report", response_model=ReportBundleResponse)
@@ -54,7 +44,7 @@ async def get_report(
 
         return ReportBundleResponse(report=report, baseline_report=baseline_report)
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/report", response_model=GenerateReportResponse)
@@ -80,7 +70,7 @@ async def generate_report(
         report = await report_engine.generate(simulation)
         return report
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)
 
 
 @router.post("/{simulation_id}/report/baseline", response_model=GenerateReportResponse)
@@ -104,4 +94,4 @@ async def generate_baseline_report(
         report = await baseline_engine.generate(simulation)
         return report
     except Exception as e:
-        _handle_error(e)
+        handle_api_error(e)

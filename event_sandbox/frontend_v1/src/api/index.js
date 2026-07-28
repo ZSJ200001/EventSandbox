@@ -64,8 +64,14 @@ export function checkHealth() {
 }
 
 // 推演
+/** 提交创建任务，立即返回 task_id */
 export function createSimulation(data) {
-  return requestWithRetry(() => service({ url: '/simulations', method: 'post', data }))
+  return service({ url: '/simulations', method: 'post', data })
+}
+
+/** 轮询创建任务进度 */
+export function getCreateStatus(taskId) {
+  return service({ url: `/simulations/create/${taskId}`, method: 'get' })
 }
 
 export function getSimulation(id) {

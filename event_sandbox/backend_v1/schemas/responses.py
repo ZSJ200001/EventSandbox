@@ -14,6 +14,22 @@ class BaseResponse(BaseModel):
     message: str = ""
 
 
+class CreateTaskResponse(BaseResponse):
+    task_id: str
+    status: str = "pending"
+    logs: list[dict] = Field(default_factory=list)
+
+
+class CreateTaskStatusResponse(BaseResponse):
+    task_id: str
+    status: str = "pending"
+    logs: list[dict] = Field(default_factory=list)
+    simulation: Optional[Simulation] = None
+    error: str = ""
+    created_at: float = 0
+    updated_at: float = 0
+
+
 class CreateSimulationResponse(BaseResponse):
     simulation: Simulation
     generated_agents: list[Agent] = Field(default_factory=list)

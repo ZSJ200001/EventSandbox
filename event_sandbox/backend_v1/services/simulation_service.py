@@ -3,6 +3,7 @@
 封装 SimulationEngine 的底层操作，为 Router 提供高内聚的用例接口。
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -17,6 +18,11 @@ from engines.simulation_engine import SimulationEngine
 logger = logging.getLogger(__name__)
 
 
+def _now_ts() -> str:
+    """返回当前时间戳字符串（用于日志显示）"""
+    return datetime.now().strftime("%H:%M:%S")
+
+
 class SimulationService:
     """推演业务服务"""
 
@@ -24,7 +30,11 @@ class SimulationService:
         self.engine = engine
         # 批量推演异步任务状态（内存存储，进程重启后丢失）
         self._batch_tasks: dict[str, dict] = {}
+        # 创建推演异步任务状态
+        self._create_tasks: dict[str, dict] = {}
         logger.info("[SimulationService] 初始化完成")
+
+    # ============== 创建推演（异步任务） ==============
 
     async def create(
         self,
@@ -33,9 +43,9 @@ class SimulationService:
         event_text: str,
         config: Optional[SimulationConfig] = None,
         rounds: int = 10,
-    ) -> Simulation:
-        """创建推演"""
-        logger.info("[SimulationService] create 开始, name=%s", name)
+    ) -> dict:
+        """提交创建推演异步任务，立即返回 task_id"""
+        logger.info("[SimulationService] create 提交异步任务, name=%s", name)
         if not name or not name.strip():
             raise ValidationError("推演名称不能为空")
         if not event_text or not event_text.strip():
@@ -51,15 +61,77 @@ class SimulationService:
                 logger.warning("[SimulationService] start_datetime 解析失败，使用当前时间")
                 config.start_datetime = datetime.now()
 
-        simulation = await self.engine.create_simulation(
-            name=name.strip(),
-            description=description or "",
-            event_text=event_text.strip(),
-            config=config,
-            rounds=rounds,
+        task_id = uuid.uuid4().hex[:8]
+        now = time.time()
+        task = {
+            "task_id": task_id,
+            "status": "pending",
+            "logs": [{"time": _now_ts(), "msg": f"已提交创建任务: {name}"}],
+            "simulation": None,
+            "error": "",
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._create_tasks[task_id] = task
+
+        asyncio.create_task(
+            self._run_create(
+                task_id, name.strip(), description or "",
+                event_text.strip(), config, rounds,
+            )
         )
-        logger.info("[SimulationService] create 完成, id=%s", simulation.id)
-        return simulation
+
+        return task
+
+    async def _run_create(
+        self,
+        task_id: str,
+        name: str,
+        description: str,
+        event_text: str,
+        config: Optional[SimulationConfig],
+        rounds: int,
+    ) -> None:
+        """后台执行推演创建（通过 engine 的 progress_callback 收集进度）"""
+        task = self._create_tasks[task_id]
+        task["status"] = "running"
+        task["updated_at"] = time.time()
+
+        def _log(msg: str) -> None:
+            task["logs"].append({"time": _now_ts(), "msg": msg})
+            task["updated_at"] = time.time()
+
+        try:
+            _log("开始构建推演图谱...")
+
+            simulation = await self.engine.create_simulation(
+                name=name,
+                description=description,
+                event_text=event_text,
+                config=config,
+                rounds=rounds,
+                progress_callback=_log,
+            )
+
+            task["status"] = "completed"
+            task["simulation"] = simulation
+            _log(f"图谱构建完成 — {simulation.id}")
+            task["updated_at"] = time.time()
+
+            logger.info("[SimulationService] 创建任务完成, task_id=%s, sim_id=%s", task_id, simulation.id)
+
+        except Exception as e:
+            logger.error("[SimulationService] 创建任务失败, task_id=%s: %s", task_id, e, exc_info=True)
+            task["status"] = "failed"
+            task["error"] = str(e)
+            _log(f"创建失败: {e}")
+            task["updated_at"] = time.time()
+
+    async def get_create_status(self, task_id: str) -> Optional[dict]:
+        """查询创建任务状态"""
+        return self._create_tasks.get(task_id)
+
+    # ============== 推演查询 ==============
 
     async def get(self, simulation_id: str) -> Simulation:
         """获取推演"""
@@ -72,6 +144,8 @@ class SimulationService:
     def is_stepping(self, simulation_id: str) -> bool:
         """判断推演当前是否正在执行 step"""
         return self.engine.is_stepping(simulation_id)
+
+    # ============== 回合推进 ==============
 
     async def step(
         self,
@@ -96,6 +170,8 @@ class SimulationService:
             "round_summary": round_summary,
         }
 
+    # ============== 批量推演 ==============
+
     async def batch_step(
         self,
         simulation_id: str,
@@ -106,12 +182,10 @@ class SimulationService:
         """启动批量推演异步任务，立即返回任务信息"""
         logger.info("[SimulationService] batch_step 启动异步任务, id=%s, steps=%d", simulation_id, steps)
 
-        # 校验推演存在且可被操作
         simulation = await self.get(simulation_id)
         if simulation.status == SimulationStatus.COMPLETED:
             raise ValidationError("推演已完成，无法继续批量推进")
 
-        # 同一推演不能同时存在多个进行中的批量任务
         for task in self._batch_tasks.values():
             if task["simulation_id"] == simulation_id and task["status"] in ("pending", "running"):
                 raise ValidationError("该推演已有正在执行的批量任务，请等待完成")
@@ -133,8 +207,6 @@ class SimulationService:
         }
         self._batch_tasks[task_id] = task
 
-        # 启动后台任务，不阻塞 HTTP 响应
-        import asyncio
         asyncio.create_task(
             self._run_batch(task_id, simulation_id, steps, stop_on_condition, conflict_threshold)
         )
@@ -154,7 +226,6 @@ class SimulationService:
         task["status"] = "running"
         task["updated_at"] = time.time()
 
-        # 批量开始前保存完整快照，用于失败时整体回滚
         snapshot = await self.get(simulation_id)
         snapshot_data = snapshot.model_dump(mode="json")
 
@@ -169,7 +240,6 @@ class SimulationService:
                 all_events.extend(result["new_events"])
                 simulation = result["simulation"]
 
-                # 更新任务进度
                 task["steps_executed"] = executed
                 task["events_generated"] = len(all_events)
                 task["current_round"] = simulation.current_round
@@ -189,7 +259,6 @@ class SimulationService:
                 break
             except Exception as e:
                 logger.error("[SimulationService] batch_step 第 %d 回合异常: %s", i + 1, e, exc_info=True)
-                # 回滚到批量开始前的状态
                 try:
                     restored = Simulation.model_validate(snapshot_data)
                     await self.engine.repo.save(restored)
@@ -228,6 +297,8 @@ class SimulationService:
             del self._batch_tasks[task_id]
         if expired:
             logger.info("[SimulationService] 清理 %d 条过期批量任务记录", len(expired))
+
+    # ============== 推演管理 ==============
 
     async def delete(self, simulation_id: str) -> bool:
         """删除推演"""

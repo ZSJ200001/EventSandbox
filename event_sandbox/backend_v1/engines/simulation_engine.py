@@ -61,11 +61,19 @@ class SimulationEngine:
         event_text: str,
         config: Optional[SimulationConfig] = None,
         rounds: int = 10,
+        progress_callback: Optional[callable] = None,
     ) -> Simulation:
         """创建推演 —— 分四步构建图谱：实体提取 → 属性构建 → 关系提取 → 图谱组装"""
         logger.info("[SimulationEngine] create_simulation 开始, name=%s, text=%s...", name, event_text[:50])
+
+        def _notify(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
+
         config = config or SimulationConfig()
         settings = get_settings()
+
+        _notify("正在提取事件实体...")
 
         # ========== Step 1: 实体提取（迭代式，最多3轮） ==========
         logger.info("[SimulationEngine] Step 1: 实体提取开始")
@@ -104,9 +112,11 @@ class SimulationEngine:
             raise EventParseError("未提取到任何实体，无法创建推演")
 
         logger.info("[SimulationEngine] 实体提取完成, 总计=%d", len(all_entities))
+        _notify(f"已提取 {len(all_entities)} 个实体: {', '.join(e['name'] for e in all_entities)}")
 
         # ========== Step 2: 实体属性构建（并发，受 Semaphore 限制） ==========
         logger.info("[SimulationEngine] Step 2: 实体属性构建开始, 并发上限=%d", settings.entity_build_concurrency)
+        _notify(f"正在构建实体属性 (0/{len(all_entities)})...")
         semaphore = asyncio.Semaphore(settings.entity_build_concurrency)
 
         async def _build_one(entity_info: dict) -> Optional[Agent]:
@@ -178,9 +188,11 @@ class SimulationEngine:
                     agent.controller_id = None
 
         logger.info("[SimulationEngine] 实体属性构建完成, agents=%d, actionable=%d", len(agents), len(actionable_agents))
+        _notify(f"实体属性构建完成 ({len(agents)} 个, {len(actionable_agents)} 个可行动)")
 
         # ========== Step 3: 关系提取 ==========
         logger.info("[SimulationEngine] Step 3: 关系提取开始")
+        _notify("正在提取实体关系网络...")
         relations: list[RelationEdge] = []
         rel_result = None
         try:
@@ -214,12 +226,14 @@ class SimulationEngine:
                     relations.append(new_rel)
 
             logger.info("[SimulationEngine] 关系提取完成, relations=%d", len(relations))
+            _notify(f"已提取 {len(relations)} 条关系边")
         except Exception as e:
             logger.error("[SimulationEngine] 关系提取失败: %s", e, exc_info=True)
             # 关系提取失败不阻断推演，继续空关系
 
         # ========== Step 4: 场景世界模型构建（方案 C）==========
         logger.info("[SimulationEngine] Step 4: 场景世界模型构建开始")
+        _notify("正在构建场景世界模型...")
         world_model = None
         try:
             entities_info = [
@@ -257,6 +271,7 @@ class SimulationEngine:
 
         # ========== Step 5: 构建图谱 ==========
         logger.info("[SimulationEngine] Step 5: 图谱构建开始")
+        _notify("正在组装图谱并保存...")
         initial_event = Event(
             type=EventType.EXTERNAL,
             description=event_text,
