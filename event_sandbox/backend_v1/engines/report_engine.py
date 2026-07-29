@@ -242,10 +242,13 @@ class ReportEngine:
 - 描述: {agent.description or '无'}
 - 目标: {', '.join(agent.goals) if agent.goals else '无'}
 
-【行动时间线】
+【推演主线】
+{simulation.config.main_line or '无'}
+
+【行动记录（按回合）】
 {timeline_text}
 
-【关系变化】
+【关系演变】
 {relation_text}
 """
 
@@ -340,9 +343,10 @@ class ReportEngine:
     # ============== 第三层：结论（单次 LLM，紧扣推演主线） ==============
 
     async def _generate_conclusion(
-        self, simulation: Simulation, overall_summary: str, timeline_facts: list[dict]
+        self, simulation: Simulation, overall_summary: str, timeline_facts: list[dict],
+        agent_summaries: list[AgentSummary],
     ) -> str:
-        """生成结论：直接回答推演主线提出的问题"""
+        """生成结论：综合 Agent 行为分析、局势描述和事实，直接回答推演主线"""
         fact_lines = []
         for item in timeline_facts:
             for f in item["facts"]:
@@ -354,6 +358,10 @@ class ReportEngine:
         if simulation.world_state:
             final_state_lines = [f"- {k}: {v}" for k, v in simulation.world_state.items()]
 
+        agent_analysis_lines = []
+        for s in agent_summaries:
+            agent_analysis_lines.append(f"### {s.agent_name}\n{s.summary}")
+
         prompt = f"""【推演主线】
 {simulation.config.main_line or '无'}
 
@@ -363,11 +371,14 @@ class ReportEngine:
 【最终世界状态】
 {chr(10).join(final_state_lines) if final_state_lines else '无'}
 
-【关键事实】
-{chr(10).join(fact_lines) if fact_lines else '无'}
+【各角色行为分析】
+{chr(10).join(agent_analysis_lines) if agent_analysis_lines else '无'}
 
 【整体局势描述】
 {overall_summary}
+
+【关键事实】
+{chr(10).join(fact_lines) if fact_lines else '无'}
 """
 
         try:
@@ -397,8 +408,8 @@ class ReportEngine:
         overall_summary = await self._generate_overall_summary(simulation, timeline_facts)
         logger.info("[ReportEngine] 整体总结完成")
 
-        # 第三层：结论
-        conclusion = await self._generate_conclusion(simulation, overall_summary, timeline_facts)
+        # 第三层：结论（综合 Agent 分析、局势描述和事实）
+        conclusion = await self._generate_conclusion(simulation, overall_summary, timeline_facts, agent_summaries)
         logger.info("[ReportEngine] 结论生成完成")
 
         # 组装完整报告 Markdown
