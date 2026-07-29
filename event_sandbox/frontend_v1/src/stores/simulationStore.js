@@ -228,7 +228,14 @@ async function batchStep(steps) {
 
       if (status.steps_executed > lastStepsExecuted) {
         lastStepsExecuted = status.steps_executed
-        addLog(`批量推演进度: 已完成 ${status.steps_executed}/${status.steps_requested} 回合`)
+        // 输出新产生的回合日志
+        const newLogs = (status.logs || []).slice(lastStepsExecuted - 1)
+        for (const log of newLogs) {
+          addLog(log.msg)
+        }
+        if (!newLogs.length) {
+          addLog(`批量推演进度: 已完成 ${status.steps_executed}/${status.steps_requested} 回合`)
+        }
       }
 
       if (status.status === 'completed') {
@@ -356,16 +363,61 @@ async function addAgent(data) {
   }
 }
 
+async function _pollReportTask(simulationId, taskId, label) {
+  const maxPolls = 300
+  const pollInterval = 1000
+  const seenMsg = new Set()
+
+  for (let i = 0; i < maxPolls; i++) {
+    if (!state.simulation || state.simulation.id !== simulationId) {
+      addLog(`已切换推演，停止${label}轮询`)
+      return null
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval))
+    const status = await api.getReportStatus(simulationId, taskId)
+
+    for (const log of (status.logs || [])) {
+      const key = `${log.time}:${log.msg}`
+      if (seenMsg.has(key)) continue
+      seenMsg.add(key)
+      addLog(log.msg)
+    }
+
+    if (status.status === 'completed') {
+      return status.report
+    }
+
+    if (status.status === 'failed') {
+      throw new Error(status.error || `${label}生成失败`)
+    }
+  }
+
+  throw new Error(`${label}生成超时`)
+}
+
 async function generateReport() {
   if (!state.simulation) return
   state.isGeneratingReport = true
   clearError()
   addLog('开始生成推演报告...')
+  const simulationId = state.simulation.id
   try {
-    const data = await api.generateReport(state.simulation.id)
-    state.report = data
-    addLog(`报告生成完成: ${data.title}`)
-    return data
+    const taskResp = await api.generateReport(simulationId)
+    const data = await _pollReportTask(simulationId, taskResp.task_id, '推演报告')
+    if (data) {
+      state.report = {
+        simulation_id: data.simulation_id,
+        title: data.title,
+        agent_summaries: data.agent_summaries,
+        overall_summary: data.overall_summary,
+        conclusion: data.conclusion,
+        full_report: data.full_report,
+      }
+      addLog(`报告生成完成: ${data.title}`)
+      return state.report
+    }
+    return null
   } catch (err) {
     setError(err.message || '报告生成失败')
     throw err
@@ -379,11 +431,23 @@ async function generateBaselineReport() {
   state.isGeneratingBaselineReport = true
   clearError()
   addLog('开始生成基线报告...')
+  const simulationId = state.simulation.id
   try {
-    const data = await api.generateBaselineReport(state.simulation.id)
-    state.baselineReport = data
-    addLog(`基线报告生成完成: ${data.title}`)
-    return data
+    const taskResp = await api.generateBaselineReport(simulationId)
+    const data = await _pollReportTask(simulationId, taskResp.task_id, '基线报告')
+    if (data) {
+      state.baselineReport = {
+        simulation_id: data.simulation_id,
+        title: data.title,
+        agent_summaries: data.agent_summaries,
+        overall_summary: data.overall_summary,
+        conclusion: data.conclusion,
+        full_report: data.full_report,
+      }
+      addLog(`基线报告生成完成: ${data.title}`)
+      return state.baselineReport
+    }
+    return null
   } catch (err) {
     setError(err.message || '基线报告生成失败')
     throw err

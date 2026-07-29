@@ -32,6 +32,8 @@ class SimulationService:
         self._batch_tasks: dict[str, dict] = {}
         # 创建推演异步任务状态
         self._create_tasks: dict[str, dict] = {}
+        # 报告生成异步任务状态
+        self._report_tasks: dict[str, dict] = {}
         logger.info("[SimulationService] 初始化完成")
 
     # ============== 创建推演（异步任务） ==============
@@ -202,6 +204,7 @@ class SimulationService:
             "current_round": simulation.current_round,
             "stop_reason": "",
             "error": "",
+            "logs": [],
             "created_at": now,
             "updated_at": now,
         }
@@ -244,6 +247,15 @@ class SimulationService:
                 task["events_generated"] = len(all_events)
                 task["current_round"] = simulation.current_round
                 task["updated_at"] = time.time()
+
+                # 每回合进度日志
+                action_results = result.get("action_results", [])
+                agent_names = [a.get("agent_name", "") for a in action_results]
+                relation_count = sum(len(a.get("relation_changes", [])) for a in action_results)
+                task["logs"].append({
+                    "time": _now_ts(),
+                    "msg": f"第 {simulation.current_round} 回合完成: {len(action_results)} 次行动, {relation_count} 条关系变化 ({', '.join(agent_names[:3])}{'...' if len(agent_names) > 3 else ''})",
+                })
 
                 if simulation.status == SimulationStatus.COMPLETED:
                     stop_reason = "completed"
@@ -321,6 +333,22 @@ class SimulationService:
         logger.info("[SimulationService] list_all 完成, total=%d", total)
         return {"simulations": paginated, "total": total, "limit": limit, "offset": offset}
 
+    async def update(
+        self, simulation_id: str, name: Optional[str] = None, description: Optional[str] = None
+    ) -> Simulation:
+        """更新推演属性"""
+        logger.info("[SimulationService] update, id=%s, name=%s", simulation_id, name)
+        simulation = await self.engine.repo.get(simulation_id)
+        if not simulation:
+            raise SimulationNotFoundError(simulation_id)
+        if name is not None and name.strip():
+            simulation.name = name.strip()
+        if description is not None:
+            simulation.description = description
+        await self.engine.repo.save(simulation)
+        logger.info("[SimulationService] update 完成, id=%s", simulation_id)
+        return simulation
+
     async def pause(self, simulation_id: str) -> Simulation:
         logger.info("[SimulationService] pause 开始, id=%s", simulation_id)
         return await self.engine.pause_simulation(simulation_id)
@@ -328,3 +356,98 @@ class SimulationService:
     async def resume(self, simulation_id: str) -> Simulation:
         logger.info("[SimulationService] resume 开始, id=%s", simulation_id)
         return await self.engine.resume_simulation(simulation_id)
+
+    # ============== 报告生成（异步任务） ==============
+
+    async def generate_report_async(self, simulation_id: str) -> dict:
+        """提交报告生成异步任务"""
+        from engines.report_engine import ReportEngine
+        logger.info("[SimulationService] generate_report_async, id=%s", simulation_id)
+        simulation = await self.engine.repo.get(simulation_id)
+        if not simulation:
+            raise SimulationNotFoundError(simulation_id)
+
+        task_id = uuid.uuid4().hex[:8]
+        now = time.time()
+        task = {
+            "task_id": task_id,
+            "simulation_id": simulation_id,
+            "status": "pending",
+            "logs": [{"time": _now_ts(), "msg": "已提交推演报告生成任务"}],
+            "report": None,
+            "error": "",
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._report_tasks[task_id] = task
+
+        asyncio.create_task(self._run_report_generation(task_id, simulation_id, "graph"))
+        return task
+
+    async def generate_baseline_report_async(self, simulation_id: str) -> dict:
+        """提交基线报告生成异步任务"""
+        from engines.report_engine import BaselineReportEngine
+        logger.info("[SimulationService] generate_baseline_report_async, id=%s", simulation_id)
+        simulation = await self.engine.repo.get(simulation_id)
+        if not simulation:
+            raise SimulationNotFoundError(simulation_id)
+
+        task_id = uuid.uuid4().hex[:8]
+        now = time.time()
+        task = {
+            "task_id": task_id,
+            "simulation_id": simulation_id,
+            "status": "pending",
+            "logs": [{"time": _now_ts(), "msg": "已提交基线报告生成任务"}],
+            "report": None,
+            "error": "",
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._report_tasks[task_id] = task
+
+        asyncio.create_task(self._run_report_generation(task_id, simulation_id, "baseline"))
+        return task
+
+    async def _run_report_generation(self, task_id: str, simulation_id: str, report_type: str) -> None:
+        """后台执行报告生成"""
+        from engines.report_engine import ReportEngine, BaselineReportEngine
+        task = self._report_tasks[task_id]
+        task["status"] = "running"
+        task["updated_at"] = time.time()
+
+        def _log(msg: str) -> None:
+            task["logs"].append({"time": _now_ts(), "msg": msg})
+            task["updated_at"] = time.time()
+
+        try:
+            simulation = await self.engine.repo.get(simulation_id)
+            if not simulation:
+                raise SimulationNotFoundError(simulation_id)
+
+            _log("开始分析推演数据...")
+
+            if report_type == "graph":
+                engine = ReportEngine(llm_client=self.engine.llm, repository=self.engine.repo)
+            else:
+                engine = BaselineReportEngine(llm_client=self.engine.llm, repository=self.engine.repo)
+
+            report = await engine.generate(simulation, progress_callback=_log)
+
+            task["status"] = "completed"
+            task["report"] = report.model_dump(mode="json")
+            _log(f"报告生成完成: {report.title}")
+            task["updated_at"] = time.time()
+
+            logger.info("[SimulationService] 报告任务完成, task_id=%s, type=%s", task_id, report_type)
+
+        except Exception as e:
+            logger.error("[SimulationService] 报告任务失败, task_id=%s: %s", task_id, e, exc_info=True)
+            task["status"] = "failed"
+            task["error"] = str(e)
+            _log(f"报告生成失败: {e}")
+            task["updated_at"] = time.time()
+
+    async def get_report_status(self, task_id: str) -> Optional[dict]:
+        """查询报告生成任务状态"""
+        return self._report_tasks.get(task_id)

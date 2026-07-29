@@ -1,22 +1,24 @@
 """报告生成路由
 
-POST /api/simulations/{simulation_id}/report
-POST /api/simulations/{simulation_id}/report/baseline
-GET  /api/simulations/{simulation_id}/report
+POST /api/simulations/{simulation_id}/report        — 提交推演报告生成任务
+POST /api/simulations/{simulation_id}/report/baseline — 提交基线报告生成任务
+GET  /api/simulations/{simulation_id}/report           — 获取已生成报告
+GET  /api/simulations/{simulation_id}/report/status/{task_id} — 查询报告任务进度
 """
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.dependencies import get_simulation_engine, get_llm_client
+from app.dependencies import get_simulation_engine, get_llm_client, get_simulation_service
 from core.exceptions import SimulationNotFoundError
 from app.error_handlers import handle_api_error
 from engines.simulation_engine import SimulationEngine
-from engines.report_engine import ReportEngine, BaselineReportEngine
 from infrastructure.llm.client import AsyncLLMClient
+from services.simulation_service import SimulationService
 from schemas.report_requests import GenerateReportRequest
 from schemas.report_responses import GenerateReportResponse, ReportBundleResponse
+from schemas.responses import ReportTaskResponse, ReportTaskStatusResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/simulations", tags=["reports"])
@@ -47,51 +49,73 @@ async def get_report(
         handle_api_error(e)
 
 
-@router.post("/{simulation_id}/report", response_model=GenerateReportResponse)
+@router.post("/{simulation_id}/report", response_model=ReportTaskResponse)
 async def generate_report(
     simulation_id: str,
     request: GenerateReportRequest,
-    engine: SimulationEngine = Depends(get_simulation_engine),
-    llm_client: AsyncLLMClient = Depends(get_llm_client),
+    service: SimulationService = Depends(get_simulation_service),
 ):
-    """生成推演报告
+    """提交推演报告生成任务（异步）
 
-    三层生成结构：逐 Agent 分析 → 整体局势描述 → 结论。
-    结论会紧扣推演主线，直接回答主线提出的问题。
-    生成后会自动持久化到推演数据中。
+    立即返回 task_id，前端轮询 GET /api/simulations/{id}/report/status/{task_id} 获取进度。
+    生成后自动持久化到推演数据中。
     """
     logger.info("[API] POST /api/simulations/%s/report", simulation_id)
     try:
-        simulation = await engine.repo.get(simulation_id)
-        if not simulation:
-            raise SimulationNotFoundError(simulation_id)
-
-        report_engine = ReportEngine(llm_client=llm_client, repository=engine.repo)
-        report = await report_engine.generate(simulation)
-        return report
+        task = await service.generate_report_async(simulation_id)
+        return ReportTaskResponse(
+            task_id=task["task_id"],
+            status=task["status"],
+            logs=task["logs"],
+        )
     except Exception as e:
         handle_api_error(e)
 
 
-@router.post("/{simulation_id}/report/baseline", response_model=GenerateReportResponse)
+@router.get("/{simulation_id}/report/status/{task_id}", response_model=ReportTaskStatusResponse)
+async def get_report_status(
+    simulation_id: str,
+    task_id: str,
+    service: SimulationService = Depends(get_simulation_service),
+):
+    """查询报告生成任务进度。前端轮询此接口获取实时日志和结果。"""
+    logger.info("[API] GET /api/simulations/%s/report/status/%s", simulation_id, task_id)
+    try:
+        task = await service.get_report_status(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"报告任务 {task_id} 不存在")
+        return ReportTaskStatusResponse(
+            task_id=task["task_id"],
+            status=task["status"],
+            logs=task["logs"],
+            report=task.get("report"),
+            error=task.get("error", ""),
+            created_at=task.get("created_at", 0),
+            updated_at=task.get("updated_at", 0),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        handle_api_error(e)
+
+
+@router.post("/{simulation_id}/report/baseline", response_model=ReportTaskResponse)
 async def generate_baseline_report(
     simulation_id: str,
-    engine: SimulationEngine = Depends(get_simulation_engine),
-    llm_client: AsyncLLMClient = Depends(get_llm_client),
+    service: SimulationService = Depends(get_simulation_service),
 ):
-    """生成基线报告（纯 LLM 线性推演）
+    """提交基线报告生成任务（异步）
 
-    基于初始事件信息，让单一 LLM 推演已发生的回合并生成分析报告。
-    不涉及多 Agent 交互，用于与图谱推演报告进行对比。
+    立即返回 task_id，前端轮询 GET /api/simulations/{id}/report/status/{task_id} 获取进度。
+    基线报告基于初始事件由单一 LLM 进行线性推演。
     """
     logger.info("[API] POST /api/simulations/%s/report/baseline", simulation_id)
     try:
-        simulation = await engine.repo.get(simulation_id)
-        if not simulation:
-            raise SimulationNotFoundError(simulation_id)
-
-        baseline_engine = BaselineReportEngine(llm_client=llm_client, repository=engine.repo)
-        report = await baseline_engine.generate(simulation)
-        return report
+        task = await service.generate_baseline_report_async(simulation_id)
+        return ReportTaskResponse(
+            task_id=task["task_id"],
+            status=task["status"],
+            logs=task["logs"],
+        )
     except Exception as e:
         handle_api_error(e)

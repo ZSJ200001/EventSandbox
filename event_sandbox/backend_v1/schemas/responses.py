@@ -88,6 +88,7 @@ class BatchStepResponse(BaseResponse):
     current_round: int = 0
     stop_reason: str = ""
     error: str = ""
+    logs: list[dict] = Field(default_factory=list)
 
 
 class BatchStepStatusResponse(BaseResponse):
@@ -102,6 +103,7 @@ class BatchStepStatusResponse(BaseResponse):
     error: str = ""
     created_at: float = 0
     updated_at: float = 0
+    logs: list[dict] = Field(default_factory=list)
 
 
 class SimulationSummary(BaseModel):
@@ -151,6 +153,22 @@ class SearchNewsResponse(BaseResponse):
     query: str = ""
     total: int = 0
     results: list[NewsItem] = Field(default_factory=list)
+
+
+class ReportTaskResponse(BaseResponse):
+    task_id: str
+    status: str = "pending"
+    logs: list[dict] = Field(default_factory=list)
+
+
+class ReportTaskStatusResponse(BaseResponse):
+    task_id: str
+    status: str = "pending"
+    logs: list[dict] = Field(default_factory=list)
+    report: Optional[dict] = None
+    error: str = ""
+    created_at: float = 0
+    updated_at: float = 0
 
 
 class ErrorResponse(BaseModel):

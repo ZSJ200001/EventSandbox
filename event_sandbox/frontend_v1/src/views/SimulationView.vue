@@ -58,14 +58,24 @@
               <span v-if="isStepping || (isLoading && !isBatching)" class="spinner-sm"></span>
               {{ isStepping ? '推演进行中...' : (isLoading && !isBatching ? '推进中...' : '推进一回合') }}
             </button>
-            <button
-              class="secondary-btn"
-              :disabled="isStepping || isLoading || !canStep"
-              @click="handleBatchStep"
-            >
-              <span v-if="isBatching" class="spinner-sm"></span>
-              批量 {{ batchSteps }} 回合
-            </button>
+            <div class="batch-btn-group">
+              <button
+                class="secondary-btn"
+                :disabled="isStepping || isLoading || !canStep"
+                @click="handleBatchStep"
+              >
+                <span v-if="isBatching" class="spinner-sm"></span>
+                批量 {{ batchStepsInput }} 回合
+              </button>
+              <input
+                type="number"
+                v-model.number="batchStepsInput"
+                min="1" max="50"
+                class="batch-steps-input"
+                title="每批回合数"
+                @click.stop
+              />
+            </div>
             <button
               v-if="simulation?.status === 'paused'"
               class="secondary-btn"
@@ -88,12 +98,6 @@
               <span v-if="isGeneratingReport || isGeneratingBaselineReport" class="spinner-sm"></span>
               {{ (isGeneratingReport || isGeneratingBaselineReport) ? '生成中...' : '报告' }}
             </button>
-          </div>
-
-          <!-- 批量设置 -->
-          <div class="batch-config" v-if="showBatchConfig">
-            <label>批量回合数: <input type="number" v-model.number="batchStepsInput" min="1" max="50" /></label>
-            <button class="text-btn" @click="showBatchConfig = false">确定</button>
           </div>
 
           <!-- 世界状态卡片 -->
@@ -158,11 +162,12 @@
 
     <!-- Agent 详情弹窗 -->
     <AgentDetail
+      ref="agentDetailRef"
       :visible="agentDetailVisible"
       :agent="selectedAgent"
       :relationshipSummary="selectedAgentRelations"
       @close="agentDetailVisible = false"
-      @field-change="handleFieldChange"
+      @save="handleAgentSave"
     />
 
     <!-- 报告面板 -->
@@ -213,7 +218,6 @@ const viewModes = [
 ]
 
 // 批量配置
-const showBatchConfig = ref(false)
 const batchStepsInput = ref(5)
 const isBatching = ref(false)
 const steppingPollTimer = ref(null)
@@ -454,13 +458,18 @@ function handleNodeClick(nodeData) {
   }
 }
 
-async function handleFieldChange({ agent_id, field, value }) {
+const agentDetailRef = ref(null)
+
+async function handleAgentSave({ agent_id, changes }) {
   try {
-    await api.modifyAgent(simulation.value.id, agent_id, { field, value })
-    store.addLog(`已修改实体 ${agent_id} 的 ${field}`)
+    for (const { field, value } of changes) {
+      await api.modifyAgent(simulation.value.id, agent_id, { field, value })
+      store.addLog(`已修改实体 ${selectedAgent.value?.name || agent_id} 的 ${field}`)
+    }
     await refreshSimulation()
+    agentDetailRef.value?.onSaveComplete(true, '保存成功')
   } catch (err) {
-    store.setError(err.message || '修改失败')
+    agentDetailRef.value?.onSaveComplete(false, err.message || '保存失败')
   }
 }
 
@@ -793,23 +802,28 @@ onUnmounted(() => {
   animation: spin 1s linear infinite;
 }
 
-.batch-config {
+.batch-btn-group {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: #666;
-  background: #FAFAFA;
-  padding: 8px 12px;
-  border-radius: 6px;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
 }
 
-.batch-config input {
-  width: 60px;
-  padding: 4px 8px;
+.batch-btn-group .secondary-btn {
+  flex: 1;
+}
+
+.batch-steps-input {
+  width: 44px;
+  padding: 10px 4px;
   border: 1px solid #E0E0E0;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  background: #FFF;
 }
 
 .text-btn {

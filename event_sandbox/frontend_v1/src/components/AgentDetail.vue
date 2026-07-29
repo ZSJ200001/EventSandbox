@@ -136,8 +136,12 @@
 
       <!-- 编辑模式保存栏 -->
       <div v-if="isEditing" class="edit-footer">
-        <button class="cancel-btn" @click="cancelEdit">取消</button>
-        <button class="save-btn" @click="saveEdit">保存</button>
+        <span v-if="saveMessage" class="save-message" :class="{ error: saveError }">{{ saveMessage }}</span>
+        <button class="cancel-btn" @click="cancelEdit" :disabled="isSaving">取消</button>
+        <button class="save-btn" @click="saveEdit" :disabled="isSaving">
+          <span v-if="isSaving" class="spinner-sm"></span>
+          {{ isSaving ? '保存中...' : '保存' }}
+        </button>
       </div>
     </div>
   </div>
@@ -152,9 +156,12 @@ const props = defineProps({
   relationshipSummary: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['close', 'field-change'])
+const emit = defineEmits(['close', 'save'])
 
 const isEditing = ref(false)
+const isSaving = ref(false)
+const saveMessage = ref('')
+const saveError = ref(false)
 const showAllLogs = ref(false)
 const editForm = ref({
   sentiment: 0,
@@ -188,6 +195,8 @@ function close() {
   emit('close')
 }
 
+defineExpose({ onSaveComplete })
+
 function addGoal() {
   editForm.value.goals.push('')
 }
@@ -211,7 +220,7 @@ function cancelEdit() {
 }
 
 function saveEdit() {
-  if (!props.agent) return
+  if (!props.agent || isSaving.value) return
   const changes = []
   if (editForm.value.sentiment !== props.agent.sentiment) {
     changes.push({ field: 'sentiment', value: editForm.value.sentiment })
@@ -230,10 +239,24 @@ function saveEdit() {
   if (originalGoals !== newGoals) {
     changes.push({ field: 'goals', value: editForm.value.goals })
   }
-  changes.forEach(c => {
-    emit('field-change', { agent_id: props.agent.id, field: c.field, value: c.value })
-  })
-  isEditing.value = false
+  if (!changes.length) {
+    isEditing.value = false
+    return
+  }
+  isSaving.value = true
+  saveMessage.value = ''
+  saveError.value = false
+  emit('save', { agent_id: props.agent.id, changes })
+}
+
+function onSaveComplete(success, message) {
+  isSaving.value = false
+  saveError.value = !success
+  saveMessage.value = message || (success ? '保存成功' : '保存失败')
+  if (success) {
+    isEditing.value = false
+  }
+  setTimeout(() => { saveMessage.value = '' }, 3000)
 }
 </script>
 
@@ -650,7 +673,35 @@ function saveEdit() {
   cursor: pointer;
 }
 
-.save-btn:hover {
+.save-btn:hover:not(:disabled) {
   opacity: 0.85;
 }
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-message {
+  font-size: 12px;
+  color: #27ae60;
+  margin-right: auto;
+  font-weight: 500;
+}
+
+.save-message.error {
+  color: #C62828;
+}
+
+.spinner-sm {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #FFF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

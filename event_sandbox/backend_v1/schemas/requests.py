@@ -56,6 +56,11 @@ class InjectEventRequest(BaseModel):
     description: str = Field(..., description="事件描述")
 
 
+class UpdateSimulationRequest(BaseModel):
+    name: Optional[str] = Field(default=None, description="推演名称")
+    description: Optional[str] = Field(default=None, description="推演描述")
+
+
 class SearchNewsRequest(BaseModel):
     query: str = Field(..., description="查询文本（事件描述）")
     topk: int = Field(default=10, ge=1, le=50, description="返回条数")

@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.dependencies import get_simulation_service, get_simulation_engine
-from schemas.requests import CreateSimulationRequest, StepSimulationRequest, BatchStepRequest, InjectEventRequest
+from schemas.requests import CreateSimulationRequest, StepSimulationRequest, BatchStepRequest, InjectEventRequest, UpdateSimulationRequest
 from schemas.responses import (
     CreateTaskResponse,
     CreateTaskStatusResponse,
@@ -216,6 +216,7 @@ async def batch_step(
             current_round=task["current_round"],
             stop_reason=task["stop_reason"],
             error=task["error"],
+            logs=task.get("logs", []),
         )
     except Exception as e:
         handle_api_error(e)
@@ -243,6 +244,7 @@ async def get_batch_status(
             error=task["error"],
             created_at=task["created_at"],
             updated_at=task["updated_at"],
+            logs=task.get("logs", []),
         )
     except Exception as e:
         handle_api_error(e)
@@ -272,6 +274,29 @@ async def resume_simulation(
     try:
         simulation = await service.resume(simulation_id)
         return PauseSimulationResponse(simulation=simulation, message="推演已恢复")
+    except Exception as e:
+        handle_api_error(e)
+
+
+@router.patch("/{simulation_id}", response_model=SimulationStateResponse)
+async def update_simulation(
+    simulation_id: str,
+    request: UpdateSimulationRequest,
+    service: SimulationService = Depends(get_simulation_service),
+):
+    """更新推演属性（名称、描述等）"""
+    logger.info("[API] PATCH /api/simulations/%s, name=%s, description=%s", simulation_id, request.name, request.description)
+    try:
+        simulation = await service.update(simulation_id, name=request.name, description=request.description)
+        recent_events = simulation.events[-20:] if len(simulation.events) > 20 else simulation.events
+        return SimulationStateResponse(
+            simulation=simulation,
+            active_agent_count=len(simulation.get_active_agents()),
+            event_count=len(simulation.events),
+            recent_events=recent_events,
+            agent_summaries=[],
+            is_being_stepped=service.is_stepping(simulation_id),
+        )
     except Exception as e:
         handle_api_error(e)
 

@@ -394,21 +394,30 @@ class ReportEngine:
 
     # ============== 公开入口 ==============
 
-    async def generate(self, simulation: Simulation) -> GenerateReportResponse:
+    async def generate(
+        self, simulation: Simulation, progress_callback: Optional[callable] = None
+    ) -> GenerateReportResponse:
         """生成完整推演报告"""
         logger.info("[ReportEngine] 开始生成报告, sim=%s", simulation.id)
+
+        def _notify(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
 
         timeline_facts = self._build_timeline_facts(simulation)
 
         # 第一层：逐 Agent 分析（并发）
+        _notify(f"正在分析 Agent 行为（共 {len(simulation.agents)} 个）...")
         agent_summaries = await self._analyze_all_agents(simulation)
         logger.info("[ReportEngine] Agent 分析完成: %d 个", len(agent_summaries))
 
         # 第二层：整体总结
+        _notify("正在生成整体局势描述...")
         overall_summary = await self._generate_overall_summary(simulation, timeline_facts)
         logger.info("[ReportEngine] 整体总结完成")
 
         # 第三层：结论（综合 Agent 分析、局势描述和事实）
+        _notify("正在撰写结论（对接推演主线）...")
         conclusion = await self._generate_conclusion(simulation, overall_summary, timeline_facts, agent_summaries)
         logger.info("[ReportEngine] 结论生成完成")
 
@@ -480,13 +489,21 @@ class BaselineReportEngine:
         self.repo = repository
         logger.info("[BaselineReportEngine] 初始化完成")
 
-    async def generate(self, simulation: Simulation) -> GenerateReportResponse:
+    async def generate(
+        self, simulation: Simulation, progress_callback: Optional[callable] = None
+    ) -> GenerateReportResponse:
         """生成基线报告：基于初始输入，让 LLM 线性推演已发生的回合"""
         logger.info("[BaselineReportEngine] 开始生成基线报告, sim=%s", simulation.id)
 
+        def _notify(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
+
+        _notify("正在分析初始事件和实体信息...")
         # 构造用户 Prompt
         prompt = self._build_prompt(simulation)
 
+        _notify("正在调用 LLM 生成基线报告...")
         # 调用 LLM
         messages = [
             LLMMessage(role="system", content=SYS_GENERATE_BASELINE_REPORT),

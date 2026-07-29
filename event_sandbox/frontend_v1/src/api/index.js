@@ -141,17 +141,21 @@ export function searchNews(query, topk = 10) {
   return service({ url: '/news/search', method: 'post', data: { query, topk } })
 }
 
-// 报告生成
+// 报告生成（异步任务 + 轮询）
 export function generateReport(simulationId) {
-  return requestWithRetry(() => service({ url: `/simulations/${simulationId}/report`, method: 'post', data: {} }))
+  return service({ url: `/simulations/${simulationId}/report`, method: 'post', data: {} })
+}
+
+export function generateBaselineReport(simulationId) {
+  return service({ url: `/simulations/${simulationId}/report/baseline`, method: 'post', data: {} })
+}
+
+export function getReportStatus(simulationId, taskId) {
+  return service({ url: `/simulations/${simulationId}/report/status/${taskId}`, method: 'get' })
 }
 
 export function getReport(simulationId) {
   return service({ url: `/simulations/${simulationId}/report`, method: 'get' })
-}
-
-export function generateBaselineReport(simulationId) {
-  return requestWithRetry(() => service({ url: `/simulations/${simulationId}/report/baseline`, method: 'post', data: {} }))
 }
 
 export default service
